@@ -54,6 +54,7 @@ model Location {
   id             String         @id @default(uuid())
   name           String
   address        String
+  isMain         Boolean        @default(false)
   organizationId String
   organization   Organization   @relation(fields: [organizationId], references: [id])
   userLocations  UserLocation[]

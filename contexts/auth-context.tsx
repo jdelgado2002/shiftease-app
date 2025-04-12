@@ -75,6 +75,7 @@ type NavigationAction =
   | { type: 'NONE' }
   | { type: 'LOGIN'; role: Role }
   | { type: 'LOGOUT' }
+  | { type: 'REGISTER_SUCCESS' }
   | { type: 'REGISTER' }
   | { type: 'ACCEPT_INVITATION' }
   | { type: 'SWITCH_ORGANIZATION' };
@@ -92,7 +93,8 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   // Fetch current user from a secure API endpoint instead of using localStorage
   const fetchCurrentUser = async () => {
     try {
-      const response = await fetchWithCsrf('/api/auth/me', {
+      // Use regular fetch to avoid CSRF issues with auth endpoints
+      const response = await fetch('/api/auth/me', {
         method: 'GET',
         credentials: 'include', // Important: include credentials (cookies)
       });
@@ -200,11 +202,15 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const logout = async () => {
     setIsLoading(true);
     try {
-      await fetch('/api/auth/logout', {
+      const response = await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include',
       });
       
+      if (!response.ok) {
+        throw new Error('Logout failed');
+      }
+
       // Clear state
       setUser(null);
       setOrganization(null);
@@ -238,7 +244,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     setIsLoading(true);
 
     try {
-      // We don't use fetchWithCsrf for login/register since they're exempted in middleware
+      // Don't use fetchWithCsrf for register since it's exempted in middleware, similar to login
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
@@ -251,41 +257,25 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
           firstName,
           lastName,
         }),
-        credentials: 'include',
+        credentials: 'include', // Important: include credentials (cookies)
       });
 
       const data = await response.json();
-
-      // Check if the error is specifically about being an owner elsewhere
-      if (response.status === 409 && data.message === "An organization owner account with this email already exists") {
-        toast({
-          title: "Registration failed",
-          description: "You are already an owner of another organization. Please use a different email or contact support.",
-          variant: "destructive",
-        });
-        throw new Error(data.message);
-      } else if (!response.ok) {
-        throw new Error(data.message || 'Registration failed');
-      }
-
+      if (!response.ok) throw new Error(data.message || 'Registration failed');
+      
+      // Set user and organization in state
       setUser(data.user);
       setOrganization(data.organization);
 
       toast({
         title: "Registration successful",
-        description: "Your account has been created.",
+        description: "Your account has been created successfully.",
       });
 
+      // Navigate to onboarding
       setNavigationAction({ type: 'REGISTER' });
     } catch (error) {
-      // Only show generic error for non-owner-specific errors
-      if (!(error instanceof Error) || !error.message.includes("owner account")) {
-        toast({
-          title: "Registration failed",
-          description: error instanceof Error ? error.message : "An error occurred",
-          variant: "destructive",
-        });
-      }
+      console.error('Registration error:', error);
       throw error;
     } finally {
       setIsLoading(false);

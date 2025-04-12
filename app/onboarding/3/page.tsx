@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, MapPin, Trash2, Edit2 } from "lucide-react"
 import { OnboardingLayout } from "@/components/onboarding/onboarding-layout"
@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
+import { useAuth } from "@/contexts/auth-context"
 
 interface Location {
   id: string
@@ -28,20 +29,38 @@ interface Location {
 }
 
 export default function OnboardingStep3() {
-  const [locations, setLocations] = useState<Location[]>([
-    {
-      id: "1",
-      name: "Main Location",
-      address: "123 Main St, Anytown, USA",
-      isMain: true,
-    },
-  ])
+  const [locations, setLocations] = useState<Location[]>([])
   const [isAddingLocation, setIsAddingLocation] = useState(false)
   const [newLocation, setNewLocation] = useState({ name: "", address: "" })
   const [editingLocation, setEditingLocation] = useState<Location | null>(null)
 
   const router = useRouter()
   const { toast } = useToast()
+  const { user } = useAuth()
+
+  // Fetch locations on component mount
+  useEffect(() => {
+    fetchLocations()
+  }, [])
+
+  const fetchLocations = async () => {
+    try {
+      const response = await fetch("/api/locations", {
+        headers: {
+          "x-organization-id": user?.organizationId ?? "",
+        },
+      })
+      if (!response.ok) throw new Error("Failed to fetch locations")
+      const data = await response.json()
+      setLocations(data)
+    } catch (error) {
+      toast({
+        title: "Error fetching locations",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      })
+    }
+  }
 
   const handleNext = () => {
     if (locations.length === 0) {
@@ -60,7 +79,7 @@ export default function OnboardingStep3() {
     router.push("/onboarding/2")
   }
 
-  const addLocation = () => {
+  const addLocation = async () => {
     if (!newLocation.name || !newLocation.address) {
       toast({
         title: "Missing information",
@@ -70,72 +89,143 @@ export default function OnboardingStep3() {
       return
     }
 
-    const newLocationObj: Location = {
-      id: Date.now().toString(),
-      name: newLocation.name,
-      address: newLocation.address,
-      isMain: locations.length === 0,
-    }
+    try {
+      const response = await fetch("/api/locations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-organization-id": user?.organizationId ?? "",
+        },
+        body: JSON.stringify({
+          name: newLocation.name,
+          address: newLocation.address,
+          isMain: locations.length === 0,
+        }),
+      })
 
-    setLocations([...locations, newLocationObj])
-    setNewLocation({ name: "", address: "" })
-    setIsAddingLocation(false)
+      if (!response.ok) throw new Error("Failed to add location")
 
-    toast({
-      title: "Location added",
-      description: `${newLocation.name} has been added.`,
-    })
-  }
+      const newLocationData = await response.json()
+      setLocations([...locations, newLocationData])
+      setNewLocation({ name: "", address: "" })
+      setIsAddingLocation(false)
 
-  const updateLocation = () => {
-    if (!editingLocation || !editingLocation.name || !editingLocation.address) {
-      return
-    }
-
-    setLocations(locations.map((loc) => (loc.id === editingLocation.id ? editingLocation : loc)))
-
-    setEditingLocation(null)
-
-    toast({
-      title: "Location updated",
-      description: `${editingLocation.name} has been updated.`,
-    })
-  }
-
-  const deleteLocation = (id: string) => {
-    const locationToDelete = locations.find((loc) => loc.id === id)
-
-    if (locationToDelete?.isMain && locations.length > 1) {
       toast({
-        title: "Cannot delete main location",
-        description: "Please set another location as main before deleting this one.",
+        title: "Location added",
+        description: `${newLocation.name} has been added.`,
+      })
+    } catch (error) {
+      toast({
+        title: "Error adding location",
+        description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       })
+    }
+  }
+
+  const updateLocation = async () => {
+    if (!editingLocation?.name || !editingLocation?.address) {
       return
     }
 
-    setLocations(locations.filter((loc) => loc.id !== id))
+    try {
+      const response = await fetch(`/api/locations/${editingLocation.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-organization-id": user?.organizationId ?? "",
+        },
+        body: JSON.stringify(editingLocation),
+      })
 
-    toast({
-      title: "Location deleted",
-      description: `${locationToDelete?.name} has been removed.`,
-    })
+      if (!response.ok) throw new Error("Failed to update location")
+
+      const updatedLocation = await response.json()
+      setLocations(locations.map((loc) => (loc.id === updatedLocation.id ? updatedLocation : loc)))
+      setEditingLocation(null)
+
+      toast({
+        title: "Location updated",
+        description: `${updatedLocation.name} has been updated.`,
+      })
+    } catch (error) {
+      toast({
+        title: "Error updating location",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      })
+    }
   }
 
-  const setAsMainLocation = (id: string) => {
-    setLocations(
-      locations.map((loc) => ({
-        ...loc,
-        isMain: loc.id === id,
-      })),
-    )
+  const deleteLocation = async (id: string) => {
+    const locationToDelete = locations.find((loc) => loc.id === id)
 
-    const mainLocation = locations.find((loc) => loc.id === id)
+    try {
+      const response = await fetch(`/api/locations/${id}`, {
+        method: "DELETE",
+        headers: {
+          "x-organization-id": user?.organizationId ?? "",
+        },
+      })
 
-    toast({
-      title: "Main location updated",
-      description: `${mainLocation?.name} is now your main location.`,
-    })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || "Failed to delete location")
+      }
+
+      setLocations(locations.filter((loc) => loc.id !== id))
+
+      toast({
+        title: "Location deleted",
+        description: `${locationToDelete?.name} has been removed.`,
+      })
+    } catch (error) {
+      toast({
+        title: "Error deleting location",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const setAsMainLocation = async (id: string) => {
+    try {
+      const locationToUpdate = locations.find((loc) => loc.id === id)
+      if (!locationToUpdate) return
+
+      const response = await fetch(`/api/locations/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-organization-id": user?.organizationId ?? "",
+        },
+        body: JSON.stringify({
+          ...locationToUpdate,
+          isMain: true,
+        }),
+      })
+
+      if (!response.ok) throw new Error("Failed to update main location")
+
+      const updatedLocation = await response.json()
+      setLocations(
+        locations.map((loc) => ({
+          ...loc,
+          isMain: loc.id === id,
+        }))
+      )
+
+      toast({
+        title: "Main location updated",
+        description: `${updatedLocation.name} is now your main location.`,
+      })
+    } catch (error) {
+      toast({
+        title: "Error updating main location",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      })
+    }
   }
 
   return (
@@ -190,7 +280,7 @@ export default function OnboardingStep3() {
                             <Label htmlFor="edit-location-name">Location Name</Label>
                             <Input
                               id="edit-location-name"
-                              value={editingLocation?.name || ""}
+                              value={editingLocation?.name ?? ""}
                               onChange={(e) =>
                                 setEditingLocation((prev) => (prev ? { ...prev, name: e.target.value } : null))
                               }
@@ -200,7 +290,7 @@ export default function OnboardingStep3() {
                             <Label htmlFor="edit-location-address">Address</Label>
                             <Textarea
                               id="edit-location-address"
-                              value={editingLocation?.address || ""}
+                              value={editingLocation?.address ?? ""}
                               onChange={(e) =>
                                 setEditingLocation((prev) => (prev ? { ...prev, address: e.target.value } : null))
                               }
