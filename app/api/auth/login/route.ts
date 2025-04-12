@@ -59,8 +59,8 @@ export async function POST(request: NextRequest) {
       .setExpirationTime("24h")
       .sign(new TextEncoder().encode(getJwtSecretKey()))
 
-    // Return success response
-    return NextResponse.json({
+    // Create the response object with user data but WITHOUT the token in the body
+    const response = NextResponse.json({
       user: {
         id: user.id,
         email: user.email,
@@ -73,8 +73,20 @@ export async function POST(request: NextRequest) {
         permissions: user.permissions.map(p => p.name),
       },
       organization: user.organization,
-      token,
     })
+
+    // Set the token as HttpOnly cookie
+    response.cookies.set({
+      name: 'token',
+      value: token,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60, // 24 hours
+      path: '/',
+    })
+
+    return response
   } catch (error) {
     console.error("Login error:", error)
     return NextResponse.json(

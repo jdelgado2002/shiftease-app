@@ -11,6 +11,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
   
+  // Get token from the HttpOnly cookie
   const token = request.cookies.get('token')?.value;
   
   // Public paths that don't require authentication
@@ -20,6 +21,17 @@ export async function middleware(request: NextRequest) {
   // Allow access to public paths without authentication
   for (const publicPath of publicPaths) {
     if (path === publicPath || path.startsWith(`${publicPath}/`)) {
+      // If already authenticated and trying to access login/register pages,
+      // redirect to dashboard
+      if (token) {
+        try {
+          await verifyAuth(token);
+          return NextResponse.redirect(new URL('/', request.url));
+        } catch (error) {
+          // Token is invalid, let them access public paths
+          return NextResponse.next();
+        }
+      }
       return NextResponse.next();
     }
   }
@@ -35,12 +47,6 @@ export async function middleware(request: NextRequest) {
   try {
     // Verify token and extract user/organization context
     const { user, organization } = await verifyAuth(token);
-
-    // If we have a valid token and trying to access login/register pages,
-    // redirect to the dashboard
-    if (publicPaths.includes(path)) {
-      return NextResponse.redirect(new URL('/', request.url));
-    }
 
     // Check if URL organization matches token organization
     // Note: This part should only apply if you're using organization-specific URLs

@@ -6,11 +6,27 @@ import { useToast } from "@/components/ui/use-toast"
 
 export type Role = "OWNER" | "MANAGER" | "EMPLOYEE"
 
+// Define a specific type for organization settings
+export interface OrganizationSettings {
+  theme?: string
+  defaultShiftDuration?: number
+  timeZone?: string
+  allowSelfScheduling?: boolean
+  requireApprovalFor?: string[]
+  notificationPreferences?: {
+    email?: boolean
+    push?: boolean
+    sms?: boolean
+  }
+  // Add more settings as needed
+  [key: string]: any // For backward compatibility, but try to add specific fields above
+}
+
 export interface Organization {
   id: string
   name: string
   slug: string
-  settings?: any
+  settings?: OrganizationSettings
 }
 
 export interface User {
@@ -18,7 +34,7 @@ export interface User {
   email: string
   firstName: string
   lastName: string
-  role: "owner" | "manager" | "employee"
+  role: Role // Updated to use the unified Role type
   organizationId: string
   organization: Organization
   isOwner: boolean
@@ -61,35 +77,45 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const router = useRouter()
   const { toast } = useToast()
 
+  // Fetch current user from a secure API endpoint instead of using localStorage
+  const fetchCurrentUser = async () => {
+    try {
+      const response = await fetch('/api/auth/me', {
+        method: 'GET',
+        credentials: 'include', // Important: include credentials (cookies)
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setUser(data.user);
+        setOrganization(data.organization);
+      } else {
+        // Clear state if not authenticated
+        setUser(null);
+        setOrganization(null);
+      }
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+      // Handle error state
+      setUser(null);
+      setOrganization(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Check if user is logged in on initial load
   useEffect(() => {
-    const checkAuth = () => {
-      try {
-        const storedUser = localStorage.getItem("user")
-        const storedOrganization = localStorage.getItem("organization")
-        if (storedUser) {
-          setUser(JSON.parse(storedUser))
-        }
-        if (storedOrganization) {
-          setOrganization(JSON.parse(storedOrganization))
-        }
-      } catch (error) {
-        console.error("Error checking authentication:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     // Use setTimeout to ensure this runs after hydration
     const timer = setTimeout(() => {
-      checkAuth()
-    }, 0)
+      fetchCurrentUser();
+    }, 0);
 
-    return () => clearTimeout(timer)
-  }, [])
+    return () => clearTimeout(timer);
+  }, []);
 
   const login = async (email: string, password: string, organizationSlug?: string) => {
-    setIsLoading(true)
+    setIsLoading(true);
 
     try {
       const response = await fetch('/api/auth/login', {
@@ -102,66 +128,72 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
           password,
           organizationSlug,
         }),
-      })
+        credentials: 'include', // Important: include credentials (cookies)
+      });
 
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Login failed')
-
-      // Store token in both localStorage and cookie for middleware access
-      localStorage.setItem('token', data.token)
-      localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('organization', JSON.stringify(data.organization))
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Login failed');
       
-      // Set the token as a cookie as well for middleware
-      document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
-      
-      // Then update state
-      setUser(data.user)
-      setOrganization(data.organization)
+      // Set user and organization in state
+      setUser(data.user);
+      setOrganization(data.organization);
 
       toast({
         title: "Login successful",
         description: `Welcome back, ${data.user.firstName}!`,
-      })
+      });
 
       // Wait for next tick to ensure state is updated before navigation
       setTimeout(() => {
         if (data.user.role === 'OWNER' || data.user.role === 'MANAGER') {
-          router.push("/")
+          router.push("/");
         } else {
-          router.push("/schedule")
+          router.push("/schedule");
         }
-      }, 0)
+      }, 0);
 
     } catch (error) {
       toast({
         title: "Login failed",
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
-      })
-      throw error
+      });
+      throw error;
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
-  const logout = () => {
-    setUser(null)
-    setOrganization(null)
-    localStorage.removeItem("user")
-    localStorage.removeItem("organization")
-    localStorage.removeItem("token")
-    
-    // Clear the auth cookie
-    document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
-    
-    router.push("/login")
-
-    toast({
-      title: "Logged out",
-      description: "You have been successfully logged out.",
-    })
-  }
+  const logout = async () => {
+    setIsLoading(true);
+    try {
+      // Call logout API to clear the HttpOnly cookie on the server
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      
+      // Clear state
+      setUser(null);
+      setOrganization(null);
+      
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out.",
+      });
+      
+      router.push("/login");
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast({
+        title: "Logout failed",
+        description: "There was an issue logging out. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const register = async ({ name, email, password, firstName, lastName }: {
     name: string
@@ -170,7 +202,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     firstName: string
     lastName: string
   }) => {
-    setIsLoading(true)
+    setIsLoading(true);
 
     try {
       const response = await fetch('/api/auth/register', {
@@ -185,74 +217,70 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
           firstName,
           lastName,
         }),
-      })
+        credentials: 'include', // Important: include credentials (cookies)
+      });
 
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Registration failed')
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Registration failed');
 
-      // Store user and org data
-      setUser(data.user)
-      setOrganization(data.organization)
-      localStorage.setItem('token', data.token)
-      localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('organization', JSON.stringify(data.organization))
-      
-      // Set the token as a cookie as well for middleware
-      document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
+      // Store user and org data in state only
+      setUser(data.user);
+      setOrganization(data.organization);
 
       toast({
         title: "Registration successful",
         description: "Your account has been created.",
-      })
+      });
 
-      router.push("/onboarding/1")
+      router.push("/onboarding/1");
     } catch (error) {
       toast({
         title: "Registration failed",
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
-      })
-      throw error
+      });
+      throw error;
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
+  // Update the rest of the auth methods
   const inviteUser = async (email: string, role: Role) => {
     try {
-      if (!user || !organization) throw new Error('Not authenticated')
+      if (!user || !organization) throw new Error('Not authenticated');
 
       const response = await fetch('/api/invitations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
         body: JSON.stringify({
           email,
           role,
           organizationId: organization.id,
         }),
-      })
+        credentials: 'include', // Include cookies for authentication
+      });
 
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Failed to send invitation')
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to send invitation');
 
       toast({
         title: "Invitation sent",
         description: `An invitation has been sent to ${email}`,
-      })
+      });
 
-      return data
+      return data;
     } catch (error) {
       toast({
         title: "Failed to send invitation",
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
-      })
-      throw error
+      });
+      throw error;
     }
-  }
+  };
 
   const acceptInvitation = async (token: string, userData: {
     firstName: string
@@ -266,89 +294,79 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(userData),
-      })
+        credentials: 'include', // Include cookies for authentication
+      });
 
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.message || 'Failed to accept invitation')
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to accept invitation');
 
-      setUser(data.user)
-      setOrganization(data.organization)
-      localStorage.setItem('token', data.token)
-      localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('organization', JSON.stringify(data.organization))
-      
-      // Set the token as a cookie as well for middleware
-      document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
+      setUser(data.user);
+      setOrganization(data.organization);
 
       toast({
         title: "Welcome!",
         description: "Your account has been created successfully.",
-      })
+      });
 
-      router.push("/employee-onboarding/1")
-      return data
+      router.push("/employee-onboarding/1");
+      return data;
     } catch (error) {
       toast({
         title: "Failed to accept invitation",
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
-      })
-      throw error
+      });
+      throw error;
     }
-  }
+  };
 
   const switchOrganization = async (organizationId: string) => {
-    setIsLoading(true)
+    setIsLoading(true);
 
     try {
       const response = await fetch(`/api/organizations/${organizationId}/switch`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
         },
-      })
+        credentials: 'include', // Include cookies for authentication
+      });
 
-      const data = await response.json()
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to switch organization')
+        throw new Error(data.message || 'Failed to switch organization');
       }
 
-      setUser(data.user)
-      setOrganization(data.organization)
-      localStorage.setItem('token', data.token)
-      localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('organization', JSON.stringify(data.organization))
-      
-      // Set the token as a cookie as well for middleware
-      document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
+      setUser(data.user);
+      setOrganization(data.organization);
 
       toast({
         title: "Organization switched",
         description: `Switched to ${data.organization.name}`,
-      })
+      });
 
-      router.push("/")
+      router.push("/");
     } catch (error) {
       toast({
         title: "Switch organization failed",
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const hasPermission = (permission: string) => {
-    if (!user) return false
-    return user.permissions.includes(permission)
-  }
+    if (!user) return false;
+    return user.permissions.includes(permission);
+  };
 
   const hasAccess = (locationId: string) => {
-    if (!user) return false
-    return user.locations.includes(locationId)
-  }
+    if (!user) return false;
+    return user.locations.includes(locationId);
+  };
 
   return (
     <AuthContext.Provider
@@ -369,7 +387,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     >
       {children}
     </AuthContext.Provider>
-  )
+  );
 }
 
 export function useAuth() {
