@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       );
       
       // Add rate limiting headers
-      response.headers.set('Retry-After', String(rateLimitResult.retryAfter || 3600));
+      response.headers.set('Retry-After', String(rateLimitResult.retryAfter ?? 3600));
       response.headers.set('X-RateLimit-Limit', String(rateLimitResult.limit));
       response.headers.set('X-RateLimit-Remaining', '0');
       response.headers.set('X-RateLimit-Reset', String(Math.ceil(rateLimitResult.resetTime / 1000)));
@@ -67,14 +67,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if user with email already exists
-    const existingUser = await prisma.user.findFirst({
-      where: { email }
+    // Check if user with email exists in any organization they own
+    const existingOwner = await prisma.user.findFirst({
+      where: { 
+        email,
+        isOwner: true,
+        role: "OWNER"
+      }
     })
 
-    if (existingUser) {
+    if (existingOwner) {
       return NextResponse.json(
-        { message: "User with this email already exists" },
+        { message: "An organization owner account with this email already exists" },
         { status: 409 }
       )
     }

@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
-import { fetchWithCsrf, getCsrfToken } from "@/lib/csrf"
+import { fetchWithCsrf } from "@/lib/csrf"
 
 export type Role = "OWNER" | "MANAGER" | "EMPLOYEE"
 
@@ -50,7 +50,7 @@ interface AuthContextType {
   isLoading: boolean
   isAuthenticated: boolean
   login: (email: string, password: string, organizationSlug?: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>  // Change this to match the async implementation
   register: (organizationData: {
     name: string
     email: string
@@ -200,8 +200,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const logout = async () => {
     setIsLoading(true);
     try {
-      // Call logout API to clear the HttpOnly cookie on the server
-      const response = await fetch('/api/auth/logout', {
+      await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include',
       });
@@ -224,6 +223,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         description: "There was an issue logging out. Please try again.",
         variant: "destructive",
       });
+    } finally {
       setIsLoading(false);
     }
   };
@@ -251,13 +251,23 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
           firstName,
           lastName,
         }),
-        credentials: 'include', // Important: include credentials (cookies)
+        credentials: 'include',
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Registration failed');
 
-      // Store user and org data in state only
+      // Check if the error is specifically about being an owner elsewhere
+      if (response.status === 409 && data.message === "An organization owner account with this email already exists") {
+        toast({
+          title: "Registration failed",
+          description: "You are already an owner of another organization. Please use a different email or contact support.",
+          variant: "destructive",
+        });
+        throw new Error(data.message);
+      } else if (!response.ok) {
+        throw new Error(data.message || 'Registration failed');
+      }
+
       setUser(data.user);
       setOrganization(data.organization);
 
@@ -266,14 +276,16 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         description: "Your account has been created.",
       });
 
-      // Set navigation action for registration
       setNavigationAction({ type: 'REGISTER' });
     } catch (error) {
-      toast({
-        title: "Registration failed",
-        description: error instanceof Error ? error.message : "An error occurred",
-        variant: "destructive",
-      });
+      // Only show generic error for non-owner-specific errors
+      if (!(error instanceof Error) || !error.message.includes("owner account")) {
+        toast({
+          title: "Registration failed",
+          description: error instanceof Error ? error.message : "An error occurred",
+          variant: "destructive",
+        });
+      }
       throw error;
     } finally {
       setIsLoading(false);
