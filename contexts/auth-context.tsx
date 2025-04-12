@@ -1,8 +1,17 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import { useRouter, usePathname } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
+
+export type Role = "OWNER" | "MANAGER" | "EMPLOYEE"
+
+export interface Organization {
+  id: string
+  name: string
+  slug: string
+  settings?: any
+}
 
 export interface User {
   id: string
@@ -10,6 +19,9 @@ export interface User {
   firstName: string
   lastName: string
   role: "owner" | "manager" | "employee"
+  organizationId: string
+  organization: Organization
+  isOwner: boolean
   locations: string[] // IDs of locations this user has access to
   permissions: string[] // Specific permissions the user has
   profileImage?: string
@@ -17,61 +29,36 @@ export interface User {
 
 interface AuthContextType {
   user: User | null
+  organization: Organization | null
   isLoading: boolean
   isAuthenticated: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string, organizationSlug?: string) => Promise<void>
   logout: () => void
-  register: (email: string, password: string, firstName: string, lastName: string) => Promise<void>
-  resetPassword: (email: string) => Promise<void>
-  updateUser: (userData: Partial<User>) => void
+  register: (organizationData: {
+    name: string
+    email: string
+    password: string
+    firstName: string
+    lastName: string
+  }) => Promise<void>
+  inviteUser: (email: string, role: Role) => Promise<void>
+  acceptInvitation: (token: string, userData: {
+    firstName: string
+    lastName: string
+    password: string
+  }) => Promise<void>
+  switchOrganization: (organizationId: string) => Promise<void>
   hasPermission: (permission: string) => boolean
   hasAccess: (locationId: string) => boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Sample users for demonstration
-const sampleUsers = [
-  {
-    id: "1",
-    email: "owner@example.com",
-    password: "password123",
-    firstName: "John",
-    lastName: "Owner",
-    role: "owner",
-    locations: ["1", "2", "3"],
-    permissions: ["manage_users", "manage_locations", "manage_schedules", "manage_settings", "view_reports"],
-    profileImage: "/placeholder.svg?height=40&width=40",
-  },
-  {
-    id: "2",
-    email: "manager@example.com",
-    password: "password123",
-    firstName: "Jane",
-    lastName: "Manager",
-    role: "manager",
-    locations: ["1"],
-    permissions: ["manage_schedules", "view_reports"],
-    profileImage: "/placeholder.svg?height=40&width=40",
-  },
-  {
-    id: "3",
-    email: "employee@example.com",
-    password: "password123",
-    firstName: "Alex",
-    lastName: "Employee",
-    role: "employee",
-    locations: ["1"],
-    permissions: ["view_schedule", "update_availability"],
-    profileImage: "/placeholder.svg?height=40&width=40",
-  },
-]
-
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [user, setUser] = useState<User | null>(null)
+  const [organization, setOrganization] = useState<Organization | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const router = useRouter()
-  const pathname = usePathname()
   const { toast } = useToast()
 
   // Check if user is logged in on initial load
@@ -79,8 +66,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const checkAuth = () => {
       try {
         const storedUser = localStorage.getItem("user")
+        const storedOrganization = localStorage.getItem("organization")
         if (storedUser) {
           setUser(JSON.parse(storedUser))
+        }
+        if (storedOrganization) {
+          setOrganization(JSON.parse(storedOrganization))
         }
       } catch (error) {
         console.error("Error checking authentication:", error)
@@ -97,36 +88,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer)
   }, [])
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, organizationSlug?: string) => {
     setIsLoading(true)
 
     try {
-      // In a real app, this would be an API call
-      const foundUser = sampleUsers.find((u) => u.email === email && u.password === password)
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          organizationSlug,
+        }),
+      })
 
-      if (!foundUser) {
-        throw new Error("Invalid email or password")
-      }
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.message || 'Login failed')
 
-      // Remove password before storing user
-      const { password: _, ...userWithoutPassword } = foundUser
-
-      // Store user in state and localStorage
-      setUser(userWithoutPassword as User)
-      localStorage.setItem("user", JSON.stringify(userWithoutPassword))
+      // Store everything first
+      localStorage.setItem('token', data.token)
+      localStorage.setItem('user', JSON.stringify(data.user))
+      localStorage.setItem('organization', JSON.stringify(data.organization))
+      
+      // Then update state
+      setUser(data.user)
+      setOrganization(data.organization)
 
       toast({
         title: "Login successful",
-        description: `Welcome back, ${userWithoutPassword.firstName}!`,
+        description: `Welcome back, ${data.user.firstName}!`,
       })
 
-      router.push("/")
+      // Wait for next tick to ensure state is updated before navigation
+      setTimeout(() => {
+        if (data.user.role === 'OWNER' || data.user.role === 'MANAGER') {
+          router.push("/")
+        } else {
+          router.push("/schedule")
+        }
+      }, 0)
+
     } catch (error) {
       toast({
         title: "Login failed",
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       })
+      throw error
     } finally {
       setIsLoading(false)
     }
@@ -134,7 +144,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null)
+    setOrganization(null)
     localStorage.removeItem("user")
+    localStorage.removeItem("organization")
+    localStorage.removeItem("token")
     router.push("/login")
 
     toast({
@@ -143,31 +156,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  const register = async (email: string, password: string, firstName: string, lastName: string) => {
+  const register = async ({ name, email, password, firstName, lastName }: {
+    name: string
+    email: string
+    password: string
+    firstName: string
+    lastName: string
+  }) => {
     setIsLoading(true)
 
     try {
-      // In a real app, this would be an API call
-      const existingUser = sampleUsers.find((u) => u.email === email)
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          organizationName: name,
+          email,
+          password,
+          firstName,
+          lastName,
+        }),
+      })
 
-      if (existingUser) {
-        throw new Error("Email already in use")
-      }
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.message || 'Registration failed')
 
-      // Create new user
-      const newUser: User = {
-        id: (sampleUsers.length + 1).toString(),
-        email,
-        firstName,
-        lastName,
-        role: "owner", // Default role for new registrations
-        locations: [],
-        permissions: ["manage_users", "manage_locations", "manage_schedules", "manage_settings"],
-      }
-
-      // Store user in state and localStorage
-      setUser(newUser)
-      localStorage.setItem("user", JSON.stringify(newUser))
+      // Store user and org data
+      setUser(data.user)
+      setOrganization(data.organization)
+      localStorage.setItem('token', data.token)
+      localStorage.setItem('user', JSON.stringify(data.user))
+      localStorage.setItem('organization', JSON.stringify(data.organization))
 
       toast({
         title: "Registration successful",
@@ -181,43 +202,124 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       })
+      throw error
     } finally {
       setIsLoading(false)
     }
   }
 
-  const resetPassword = async (email: string) => {
+  const inviteUser = async (email: string, role: Role) => {
+    try {
+      if (!user || !organization) throw new Error('Not authenticated')
+
+      const response = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({
+          email,
+          role,
+          organizationId: organization.id,
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.message || 'Failed to send invitation')
+
+      toast({
+        title: "Invitation sent",
+        description: `An invitation has been sent to ${email}`,
+      })
+
+      return data
+    } catch (error) {
+      toast({
+        title: "Failed to send invitation",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
+  const acceptInvitation = async (token: string, userData: {
+    firstName: string
+    lastName: string
+    password: string
+  }) => {
+    try {
+      const response = await fetch(`/api/invitations/${token}/accept`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData),
+      })
+
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.message || 'Failed to accept invitation')
+
+      setUser(data.user)
+      setOrganization(data.organization)
+      localStorage.setItem('token', data.token)
+      localStorage.setItem('user', JSON.stringify(data.user))
+      localStorage.setItem('organization', JSON.stringify(data.organization))
+
+      toast({
+        title: "Welcome!",
+        description: "Your account has been created successfully.",
+      })
+
+      router.push("/employee-onboarding/1")
+      return data
+    } catch (error) {
+      toast({
+        title: "Failed to accept invitation",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
+  const switchOrganization = async (organizationId: string) => {
     setIsLoading(true)
 
     try {
-      // In a real app, this would be an API call
-      const existingUser = sampleUsers.find((u) => u.email === email)
+      const response = await fetch(`/api/organizations/${organizationId}/switch`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      })
 
-      if (!existingUser) {
-        throw new Error("No account found with this email")
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to switch organization')
       }
 
+      setUser(data.user)
+      setOrganization(data.organization)
+      localStorage.setItem('token', data.token)
+
       toast({
-        title: "Password reset email sent",
-        description: "Check your email for instructions to reset your password.",
+        title: "Organization switched",
+        description: `Switched to ${data.organization.name}`,
       })
+
+      router.push("/")
     } catch (error) {
       toast({
-        title: "Password reset failed",
+        title: "Switch organization failed",
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       })
     } finally {
       setIsLoading(false)
     }
-  }
-
-  const updateUser = (userData: Partial<User>) => {
-    if (!user) return
-
-    const updatedUser = { ...user, ...userData }
-    setUser(updatedUser)
-    localStorage.setItem("user", JSON.stringify(updatedUser))
   }
 
   const hasPermission = (permission: string) => {
@@ -234,13 +336,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        organization,
         isLoading,
         isAuthenticated: !!user,
         login,
         logout,
         register,
-        resetPassword,
-        updateUser,
+        inviteUser,
+        acceptInvitation,
+        switchOrganization,
         hasPermission,
         hasAccess,
       }}

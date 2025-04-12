@@ -209,7 +209,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <SheetContent side="left" className="w-[240px] sm:w-[300px]">
               <div className="flex flex-col gap-4 py-4">
                 <Link href="/" className="flex items-center gap-2 px-2">
-                  <span className="text-xl font-bold">ShiftEase</span>
+                  <span className="text-xl font-bold">EasyShiftHQ</span>
                 </Link>
 
                 <div className="flex flex-col gap-1">
@@ -259,7 +259,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </SheetContent>
           </Sheet>
           <Link href="/" className="flex items-center gap-2">
-            <span className="text-xl font-bold">ShiftEase</span>
+            <span className="text-xl font-bold">EasyShiftHQ</span>
           </Link>
         </div>
         <nav className="hidden md:flex items-center gap-5">

@@ -1,0 +1,126 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id             String           @id @default(uuid())
+  name           String
+  slug           String           @unique // For URL friendly organization access
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  users          User[]
+  locations      Location[]
+  invitations    Invitation[]     // Add relation to invitations
+  subscriptionId String?         // For future subscription management
+  settings       Json?           // Organization-wide settings
+
+  @@index([slug])
+}
+
+model User {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  password        String
+  firstName       String
+  lastName        String
+  role            Role           @default(EMPLOYEE)
+  status          UserStatus     @default(INVITED)
+  organizationId  String
+  organization    Organization    @relation(fields: [organizationId], references: [id])
+  isOwner         Boolean        @default(false) // Organization owner flag
+  userLocations   UserLocation[]
+  permissions     Permission[]
+  sentInvitations Invitation[] @relation("inviter") // Add relation for sent invitations
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([organizationId])
+  @@unique([email, organizationId]) // Allow same email in different organizations
+}
+
+model Location {
+  id             String         @id @default(uuid())
+  name           String
+  address        String
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  userLocations  UserLocation[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId])
+}
+
+model Permission {
+  id            String   @id @default(uuid())
+  name          String
+  users         User[]
+  organizationId String  // Permissions can be organization-specific
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([name, organizationId])
+}
+
+model UserLocation {
+  id        String   @id @default(cuid())
+  userId    String
+  locationId String
+  user      User     @relation(fields: [userId], references: [id])
+  location  Location @relation(fields: [locationId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, locationId])
+  @@map("user_locations")
+}
+
+model Invitation {
+  id             String         @id @default(uuid())
+  email          String
+  role           Role
+  token          String         @unique
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  inviterId      String
+  inviter        User          @relation("inviter", fields: [inviterId], references: [id])
+  status         InviteStatus  @default(PENDING)
+  expiresAt      DateTime
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([email, organizationId])
+  @@index([token])
+  @@index([organizationId])
+  @@map("invitations")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  EMPLOYEE
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  INACTIVE
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}

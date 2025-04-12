@@ -1,11 +1,9 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { Eye, EyeOff, Mail, Lock } from "lucide-react"
-
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,10 +15,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const { login, isLoading } = useAuth()
+  const searchParams = useSearchParams()
+  const organizationSlug = searchParams.get("org")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await login(email, password)
+    await login(email, password, organizationSlug ?? undefined)
   }
 
   return (
@@ -28,7 +28,7 @@ export default function LoginPage() {
       {/* Left side - Brand */}
       <div className="bg-primary text-primary-foreground p-8 md:w-1/2 flex flex-col justify-center items-center">
         <div className="max-w-md mx-auto text-center">
-          <h1 className="text-3xl font-bold mb-4">ShiftEase</h1>
+          <h1 className="text-3xl font-bold mb-4">EasyShiftHQ</h1>
           <p className="text-xl mb-6">Restaurant scheduling simplified</p>
           <p className="text-primary-foreground/80">
             Sign in to access your restaurant scheduling dashboard, manage your team, and streamline your operations.
