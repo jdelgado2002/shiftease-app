@@ -3,9 +3,38 @@ import prisma from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { SignJWT } from "jose"
 import { getJwtSecretKey } from "@/lib/auth"
+import { getClientIp, rateLimit } from "@/lib/rate-limit"
 
 export async function POST(request: NextRequest) {
   try {
+    // Apply rate limiting for registration to prevent abuse
+    // Use a stricter rate limit for registration than login
+    const ip = getClientIp(request);
+    const rateLimitResult = rateLimit(ip, {
+      maxRequests: 3,           // Only 3 registration attempts
+      windowMs: 60 * 60 * 1000, // Within a 1-hour window
+      blockDurationMs: 24 * 60 * 60 * 1000 // Block for 24 hours on exceeding limit
+    });
+
+    // If rate limit exceeded, return 429 Too Many Requests
+    if (!rateLimitResult.success) {
+      const response = NextResponse.json(
+        { 
+          message: "Too many registration attempts. Please try again later.",
+          retryAfter: rateLimitResult.retryAfter
+        },
+        { status: 429 }
+      );
+      
+      // Add rate limiting headers
+      response.headers.set('Retry-After', String(rateLimitResult.retryAfter || 3600));
+      response.headers.set('X-RateLimit-Limit', String(rateLimitResult.limit));
+      response.headers.set('X-RateLimit-Remaining', '0');
+      response.headers.set('X-RateLimit-Reset', String(Math.ceil(rateLimitResult.resetTime / 1000)));
+      
+      return response;
+    }
+
     const { organizationName, email, password, firstName, lastName } = await request.json()
 
     console.log('Received registration request for:', { organizationName, email, firstName, lastName })
