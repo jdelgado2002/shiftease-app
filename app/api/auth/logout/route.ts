@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import { cookies } from "next/headers"
 
 export async function POST(request: NextRequest) {
   // Create a response
@@ -8,8 +7,11 @@ export async function POST(request: NextRequest) {
     message: "Logged out successfully" 
   })
   
-  // Clear the auth token cookie
+  // Clear all auth cookies
   response.cookies.delete('token')
+  
+  // Also clear CSRF cookie to prevent issues with subsequent requests
+  response.cookies.delete('csrf-token')
   
   return response
 }

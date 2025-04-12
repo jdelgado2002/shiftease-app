@@ -31,7 +31,7 @@ model Organization {
 
 model User {
   id              String         @id @default(uuid())
-  email           String         @unique
+  email           String
   password        String
   firstName       String
   lastName        String
@@ -81,7 +81,7 @@ model UserLocation {
   user      User     @relation(fields: [userId], references: [id])
   location  Location @relation(fields: [locationId], references: [id])
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now())
 
   @@unique([userId, locationId])
   @@map("user_locations")
@@ -99,7 +99,7 @@ model Invitation {
   status         InviteStatus  @default(PENDING)
   expiresAt      DateTime
   createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  updatedAt      DateTime      @default(now())
 
   @@unique([email, organizationId])
   @@index([token])

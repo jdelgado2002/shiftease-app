@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
+import { fetchWithCsrf, getCsrfToken } from "@/lib/csrf"
 
 export type Role = "OWNER" | "MANAGER" | "EMPLOYEE"
 
@@ -64,9 +65,19 @@ interface AuthContextType {
     password: string
   }) => Promise<void>
   switchOrganization: (organizationId: string) => Promise<void>
+  refreshUserData: () => Promise<void>
   hasPermission: (permission: string) => boolean
   hasAccess: (locationId: string) => boolean
 }
+
+// Navigation action types for different auth flows
+type NavigationAction =
+  | { type: 'NONE' }
+  | { type: 'LOGIN'; role: Role }
+  | { type: 'LOGOUT' }
+  | { type: 'REGISTER' }
+  | { type: 'ACCEPT_INVITATION' }
+  | { type: 'SWITCH_ORGANIZATION' };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
@@ -74,13 +85,14 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [user, setUser] = useState<User | null>(null)
   const [organization, setOrganization] = useState<Organization | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [navigationAction, setNavigationAction] = useState<NavigationAction>({ type: 'NONE' })
   const router = useRouter()
   const { toast } = useToast()
 
   // Fetch current user from a secure API endpoint instead of using localStorage
   const fetchCurrentUser = async () => {
     try {
-      const response = await fetch('/api/auth/me', {
+      const response = await fetchWithCsrf('/api/auth/me', {
         method: 'GET',
         credentials: 'include', // Important: include credentials (cookies)
       });
@@ -106,18 +118,46 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   // Check if user is logged in on initial load
   useEffect(() => {
-    // Use setTimeout to ensure this runs after hydration
-    const timer = setTimeout(() => {
-      fetchCurrentUser();
-    }, 0);
-
-    return () => clearTimeout(timer);
+    fetchCurrentUser();
   }, []);
+
+  // Handle navigation based on auth actions
+  useEffect(() => {
+    if (isLoading) return;
+    
+    switch (navigationAction.type) {
+      case 'LOGIN':
+        if (navigationAction.role === 'OWNER' || navigationAction.role === 'MANAGER') {
+          router.push("/");
+        } else {
+          router.push("/schedule");
+        }
+        break;
+      case 'LOGOUT':
+        router.push("/login");
+        break;
+      case 'REGISTER':
+        router.push("/onboarding/1");
+        break;
+      case 'ACCEPT_INVITATION':
+        router.push("/employee-onboarding/1");
+        break;
+      case 'SWITCH_ORGANIZATION':
+        router.push("/");
+        break;
+    }
+    
+    // Reset navigation action after it's processed
+    if (navigationAction.type !== 'NONE') {
+      setNavigationAction({ type: 'NONE' });
+    }
+  }, [navigationAction, isLoading, router]);
 
   const login = async (email: string, password: string, organizationSlug?: string) => {
     setIsLoading(true);
 
     try {
+      // We don't use fetchWithCsrf for login/register since they're exempted in middleware
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -143,15 +183,8 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         description: `Welcome back, ${data.user.firstName}!`,
       });
 
-      // Wait for next tick to ensure state is updated before navigation
-      setTimeout(() => {
-        if (data.user.role === 'OWNER' || data.user.role === 'MANAGER') {
-          router.push("/");
-        } else {
-          router.push("/schedule");
-        }
-      }, 0);
-
+      // Set navigation action instead of using setTimeout
+      setNavigationAction({ type: 'LOGIN', role: data.user.role });
     } catch (error) {
       toast({
         title: "Login failed",
@@ -168,7 +201,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     setIsLoading(true);
     try {
       // Call logout API to clear the HttpOnly cookie on the server
-      await fetch('/api/auth/logout', {
+      const response = await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include',
       });
@@ -182,7 +215,8 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         description: "You have been successfully logged out.",
       });
       
-      router.push("/login");
+      // Set navigation action for logout
+      setNavigationAction({ type: 'LOGOUT' });
     } catch (error) {
       console.error('Logout error:', error);
       toast({
@@ -190,7 +224,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         description: "There was an issue logging out. Please try again.",
         variant: "destructive",
       });
-    } finally {
       setIsLoading(false);
     }
   };
@@ -205,6 +238,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     setIsLoading(true);
 
     try {
+      // We don't use fetchWithCsrf for login/register since they're exempted in middleware
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
@@ -232,7 +266,8 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         description: "Your account has been created.",
       });
 
-      router.push("/onboarding/1");
+      // Set navigation action for registration
+      setNavigationAction({ type: 'REGISTER' });
     } catch (error) {
       toast({
         title: "Registration failed",
@@ -250,7 +285,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     try {
       if (!user || !organization) throw new Error('Not authenticated');
 
-      const response = await fetch('/api/invitations', {
+      const response = await fetchWithCsrf('/api/invitations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -260,7 +295,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
           role,
           organizationId: organization.id,
         }),
-        credentials: 'include', // Include cookies for authentication
       });
 
       const data = await response.json();
@@ -288,13 +322,12 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     password: string
   }) => {
     try {
-      const response = await fetch(`/api/invitations/${token}/accept`, {
+      const response = await fetchWithCsrf(`/api/invitations/${token}/accept`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(userData),
-        credentials: 'include', // Include cookies for authentication
       });
 
       const data = await response.json();
@@ -308,7 +341,9 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         description: "Your account has been created successfully.",
       });
 
-      router.push("/employee-onboarding/1");
+      // Set navigation action for accepting invitation
+      setNavigationAction({ type: 'ACCEPT_INVITATION' });
+      
       return data;
     } catch (error) {
       toast({
@@ -324,12 +359,11 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`/api/organizations/${organizationId}/switch`, {
+      const response = await fetchWithCsrf(`/api/organizations/${organizationId}/switch`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include', // Include cookies for authentication
       });
 
       const data = await response.json();
@@ -346,13 +380,25 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         description: `Switched to ${data.organization.name}`,
       });
 
-      router.push("/");
+      // Set navigation action for switching organization
+      setNavigationAction({ type: 'SWITCH_ORGANIZATION' });
     } catch (error) {
       toast({
         title: "Switch organization failed",
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const refreshUserData = async () => {
+    setIsLoading(true);
+    try {
+      await fetchCurrentUser();
+    } catch (error) {
+      console.error('Error refreshing user data:', error);
     } finally {
       setIsLoading(false);
     }
@@ -381,6 +427,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         inviteUser,
         acceptInvitation,
         switchOrganization,
+        refreshUserData,
         hasPermission,
         hasAccess,
       }}

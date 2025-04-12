@@ -1,4 +1,5 @@
 import { jwtVerify } from "jose";
+import prisma from "./prisma";
 
 interface User {
   id: string;
@@ -6,12 +7,16 @@ interface User {
   firstName?: string;
   lastName?: string;
   role?: string;
+  organizationId?: string;
+  isOwner?: boolean;
+  permissions?: string[];
 }
 
 interface Organization {
   id: string;
   name: string;
   slug: string;
+  settings?: Record<string, any>;
 }
 
 interface AuthResult {
@@ -19,37 +24,106 @@ interface AuthResult {
   organization: Organization;
 }
 
+/**
+ * Lightweight JWT verification for middleware (Edge compatible)
+ * Does NOT fetch from database - only verifies the token's validity and structure
+ * Use this in middleware or edge functions where Prisma cannot be used
+ * 
+ * @param token - JWT token to verify
+ * @returns Simple verification result with minimal user/org data from the token
+ */
+export async function verifyAuthForEdge(token: string): Promise<{ 
+  valid: boolean; 
+  userId?: string;
+  organizationId?: string;
+  role?: string;
+}> {
+  try {
+    const secret = getJwtSecretKey();
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
+    
+    // Extract basic user info from token payload
+    const userId = (payload.user && (payload.user as any).id) || payload.userId as string;
+    const organizationId = (payload.organization && (payload.organization as any).id) || payload.organizationId as string;
+    const role = (payload.user && (payload.user as any).role) || payload.role as string;
+    
+    if (!userId) {
+      return { valid: false };
+    }
+    
+    return {
+      valid: true,
+      userId,
+      organizationId,
+      role
+    };
+  } catch (error) {
+    console.error("Edge auth verification error:", error);
+    return { valid: false };
+  }
+}
+
+/**
+ * Verifies the JWT token and returns fresh user and organization data
+ * Always fetches the latest data from the database to ensure permissions and details are up-to-date
+ * Only use this in server components/routes, NOT in middleware or Edge functions
+ * 
+ * @param token - JWT token to verify
+ * @returns AuthResult containing fresh user and organization data
+ */
 export async function verifyAuth(token: string): Promise<AuthResult> {
   try {
     const secret = getJwtSecretKey();
     const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
     
-    // Handle different token structures
-    // Some tokens might have user/org directly in payload, others might have userId/organizationId
-    if (payload.user && payload.organization) {
-      return {
-        user: payload.user as User,
-        organization: payload.organization as Organization
-      };
-    } else if (payload.userId && payload.organizationId) {
-      // Legacy format - we should fetch the user and org from the database
-      // For this quick fix we'll return what we have, but in production
-      // you would want to fetch the complete user and org data
-      return {
-        user: {
-          id: payload.userId as string,
-          email: payload.email as string || '',
-          role: payload.role as string || '',
-        } as User,
-        organization: {
-          id: payload.organizationId as string,
-          name: '',
-          slug: '',
-        } as Organization
-      };
+    // Extract user ID from payload - either from userId field or user.id
+    const userId = (payload.user && (payload.user as any).id) || payload.userId as string;
+    
+    if (!userId) {
+      throw new Error("Invalid token: missing user identifier");
     }
     
-    throw new Error("Invalid token payload");
+    // Always fetch fresh user data from the database
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        organization: true,
+        permissions: true,
+      },
+    });
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+    
+    // Always fetch fresh organization data
+    const organization = await prisma.organization.findUnique({
+      where: { id: user.organizationId },
+    });
+    
+    if (!organization) {
+      throw new Error("Organization not found");
+    }
+    
+    // Return clean user object with mapped permissions
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName || undefined,
+        lastName: user.lastName || undefined,
+        role: user.role,
+        organizationId: user.organizationId,
+        isOwner: user.isOwner,
+        permissions: user.permissions.map(p => p.name),
+      },
+      organization: {
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+        settings: organization.settings as Record<string, any> || {},
+      }
+    };
   } catch (error) {
     console.error("Auth verification error:", error);
     throw new Error("Authentication failed");
