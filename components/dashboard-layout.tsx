@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, Suspense } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import {
@@ -52,9 +52,85 @@ interface NavItem {
   permissions?: string[]
 }
 
+// Component that uses useSearchParams needs to be wrapped in Suspense
+function NavigationLinks({ 
+  filteredNavItems, 
+  pathname
+}: { 
+  filteredNavItems: NavItem[],
+  pathname: string
+}) {
+  // This is the component that uses useSearchParams
+  const searchParams = useSearchParams()
+
+  return (
+    <>
+      {filteredNavItems.map((item, index) => (
+        <Link
+          key={index}
+          href={item.href}
+          className={cn(
+            "flex items-center gap-2 text-sm font-medium",
+            pathname === item.href ? "text-primary" : "text-muted-foreground hover:text-primary",
+          )}
+        >
+          <item.icon className="h-4 w-4" />
+          <span>{item.title}</span>
+          {item.badge && (
+            <Badge variant="secondary" className="ml-auto">
+              {item.badge}
+            </Badge>
+          )}
+        </Link>
+      ))}
+      <Link
+        href="/schedule?tab=requirements"
+        className={cn(
+          "flex items-center gap-2 text-sm font-medium",
+          pathname === "/schedule" && searchParams.get("tab") === "requirements"
+            ? "text-primary"
+            : "text-muted-foreground hover:text-primary",
+        )}
+      >
+        <Users2 className="h-4 w-4" />
+        <span>Staffing Requirements</span>
+      </Link>
+    </>
+  )
+}
+
+// Fallback component to show while the suspended component is loading
+function NavigationLinksFallback({ filteredNavItems, pathname }: { filteredNavItems: NavItem[], pathname: string }) {
+  return (
+    <>
+      {filteredNavItems.map((item, index) => (
+        <Link
+          key={index}
+          href={item.href}
+          className={cn(
+            "flex items-center gap-2 text-sm font-medium",
+            pathname === item.href ? "text-primary" : "text-muted-foreground hover:text-primary",
+          )}
+        >
+          <item.icon className="h-4 w-4" />
+          <span>{item.title}</span>
+          {item.badge && (
+            <Badge variant="secondary" className="ml-auto">
+              {item.badge}
+            </Badge>
+          )}
+        </Link>
+      ))}
+      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-primary">
+        <Users2 className="h-4 w-4" />
+        <span>Staffing Requirements</span>
+      </div>
+    </>
+  )
+}
+
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const searchParams = useSearchParams()
   const [open, setOpen] = useState(false)
   const { role } = useRole()
   const { notifications, unreadCount, markAllAsRead } = useNotifications()
@@ -263,36 +339,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           </Link>
         </div>
         <nav className="hidden md:flex items-center gap-5">
-          {filteredNavItems.map((item, index) => (
-            <Link
-              key={index}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-2 text-sm font-medium",
-                pathname === item.href ? "text-primary" : "text-muted-foreground hover:text-primary",
-              )}
-            >
-              <item.icon className="h-4 w-4" />
-              <span>{item.title}</span>
-              {item.badge && (
-                <Badge variant="secondary" className="ml-auto">
-                  {item.badge}
-                </Badge>
-              )}
-            </Link>
-          ))}
-          <Link
-            href="/schedule?tab=requirements"
-            className={cn(
-              "flex items-center gap-2 text-sm font-medium",
-              pathname === "/schedule" && searchParams.get("tab") === "requirements"
-                ? "text-primary"
-                : "text-muted-foreground hover:text-primary",
-            )}
-          >
-            <Users2 className="h-4 w-4" />
-            <span>Staffing Requirements</span>
-          </Link>
+          <Suspense fallback={<NavigationLinksFallback filteredNavItems={filteredNavItems} pathname={pathname} />}>
+            <NavigationLinks filteredNavItems={filteredNavItems} pathname={pathname} />
+          </Suspense>
         </nav>
         <div className="flex items-center gap-2">
           <DropdownMenu>
