@@ -107,10 +107,13 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       const data = await response.json()
       if (!response.ok) throw new Error(data.message || 'Login failed')
 
-      // Store everything first
+      // Store token in both localStorage and cookie for middleware access
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.user))
       localStorage.setItem('organization', JSON.stringify(data.organization))
+      
+      // Set the token as a cookie as well for middleware
+      document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
       
       // Then update state
       setUser(data.user)
@@ -148,6 +151,10 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     localStorage.removeItem("user")
     localStorage.removeItem("organization")
     localStorage.removeItem("token")
+    
+    // Clear the auth cookie
+    document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
+    
     router.push("/login")
 
     toast({
@@ -189,6 +196,9 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.user))
       localStorage.setItem('organization', JSON.stringify(data.organization))
+      
+      // Set the token as a cookie as well for middleware
+      document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
 
       toast({
         title: "Registration successful",
@@ -266,6 +276,9 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.user))
       localStorage.setItem('organization', JSON.stringify(data.organization))
+      
+      // Set the token as a cookie as well for middleware
+      document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
 
       toast({
         title: "Welcome!",
@@ -304,6 +317,11 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       setUser(data.user)
       setOrganization(data.organization)
       localStorage.setItem('token', data.token)
+      localStorage.setItem('user', JSON.stringify(data.user))
+      localStorage.setItem('organization', JSON.stringify(data.organization))
+      
+      // Set the token as a cookie as well for middleware
+      document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
 
       toast({
         title: "Organization switched",
