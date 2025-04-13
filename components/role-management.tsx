@@ -181,11 +181,11 @@ export function RoleManagement() {
       return
     }
 
-    // Check if email already exists
+    // Check if email already exists in this organization
     if (users.some((user) => user.email === newUserEmail)) {
       toast({
-        title: "User already exists",
-        description: "A user with this email already exists.",
+        title: "User exists in organization",
+        description: "This user is already a member of this organization.",
         variant: "destructive",
       })
       return

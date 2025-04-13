@@ -19,21 +19,51 @@ import { useToast } from "@/components/ui/use-toast"
 <<<<<<< Updated upstream
 
 export default function InvitePage({ params }: { params: { token: string } }) {
+  const [inviteDetails, setInviteDetails] = useState<InviteDetails>({
+    email: "",
+    restaurantName: "",
+    role: "",
+    loading: true,
+    error: null,
+  })
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [firstName, setFirstName] = useState("")
-  const [lastName, setLastName] = useState("")
+
   const router = useRouter()
+  const { acceptInvitation } = useAuth()
   const { toast } = useToast()
 
-  // In a real app, we would validate the token and fetch the invitation details
-  const inviteDetails = {
-    email: "employee@example.com",
-    restaurantName: "Downtown Restaurant",
-    role: "Server",
-  }
+  // Fetch invitation details when the page loads
+  useEffect(() => {
+    const fetchInviteDetails = async () => {
+      try {
+        const response = await fetch(`/api/invitations/${params.token}`)
+        const data = await response.json()
+        
+        if (!response.ok) throw new Error(data.message || 'Invalid invitation')
+        
+        setInviteDetails({
+          email: data.email,
+          restaurantName: data.organization.name,
+          role: data.role,
+          loading: false,
+          error: null,
+        })
+      } catch (error) {
+        setInviteDetails(prev => ({
+          ...prev,
+          loading: false,
+          error: error instanceof Error ? error.message : 'Failed to load invitation details',
+        }))
+      }
+    }
+
+    fetchInviteDetails()
+  }, [params.token])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -49,15 +79,36 @@ export default function InvitePage({ params }: { params: { token: string } }) {
 
     setIsLoading(true)
 
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false)
-      toast({
-        title: "Account created",
-        description: "Your account has been successfully created.",
+    try {
+      await acceptInvitation(params.token, {
+        firstName,
+        lastName,
+        password,
       })
-      router.push("/employee-onboarding/1")
-    }, 1500)
+    } catch (error) {
+      console.error('Error accepting invitation:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (inviteDetails.loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p>Loading invitation details...</p>
+      </div>
+    )
+  }
+
+  if (inviteDetails.error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-destructive mb-2">Invalid Invitation</h2>
+          <p className="text-muted-foreground">{inviteDetails.error}</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -65,11 +116,11 @@ export default function InvitePage({ params }: { params: { token: string } }) {
       {/* Left side - Brand */}
       <div className="bg-primary text-primary-foreground p-8 md:w-1/2 flex flex-col justify-center items-center">
         <div className="max-w-md mx-auto text-center">
-          <h1 className="text-3xl font-bold mb-4">ShiftEase</h1>
+          <h1 className="text-3xl font-bold mb-4">EasyShiftHQ</h1>
           <p className="text-xl mb-6">Restaurant scheduling simplified</p>
           <p className="text-primary-foreground/80">
-            You've been invited to join {inviteDetails.restaurantName} on ShiftEase. Complete your registration to
-            access your schedule, request time off, and more.
+            You've been invited to join {inviteDetails.restaurantName} on EasyShiftHQ. Complete your registration to
+            get started.
           </p>
         </div>
       </div>
@@ -91,11 +142,21 @@ export default function InvitePage({ params }: { params: { token: string } }) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="first-name">First Name</Label>
-                <Input id="first-name" value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+                <Input
+                  id="first-name"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="last-name">Last Name</Label>
-                <Input id="last-name" value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+                <Input
+                  id="last-name"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                />
               </div>
             </div>
 

@@ -32,7 +32,7 @@ export function OnboardingLayout({
       {/* Header */}
       <header className="bg-primary text-primary-foreground p-6">
         <div className="container mx-auto">
-          <h1 className="text-2xl font-bold">ShiftEase</h1>
+          <h1 className="text-2xl font-bold">EasyShiftHQ</h1>
         </div>
       </header>
 
@@ -88,7 +88,7 @@ export function OnboardingLayout({
           <p>
             Need help? Contact your manager or{" "}
             <a href="#" className="text-primary underline">
-              support@shiftease.com
+              support@easyshifthq.com
             </a>
           </p>
         </div>

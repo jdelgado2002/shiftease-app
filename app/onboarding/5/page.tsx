@@ -27,7 +27,7 @@ export default function OnboardingStep5() {
 
     // In a real app, we would save all the settings here
 
-    router.push("/dashboard")
+    router.push("/")
   }
 
   const handleBack = () => {
