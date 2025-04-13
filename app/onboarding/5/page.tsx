@@ -9,33 +9,71 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
 import { Shield, Smartphone, Clock, Check } from "lucide-react"
+import { useAuth } from "@/contexts/auth-context"
 
 export default function OnboardingStep5() {
   const [enableMFA, setEnableMFA] = useState(true)
   const [enableGeofencing, setEnableGeofencing] = useState(true)
   const [enableSSO, setEnableSSO] = useState(false)
   const [enableBiometric, setEnableBiometric] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
 
   const router = useRouter()
   const { toast } = useToast()
 
-  const handleNext = () => {
-    toast({
-      title: "Setup complete!",
-      description: "Your account has been successfully set up.",
-    })
+  const handleNext = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/organizations/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          security: {
+            mfaRequired: enableMFA,
+            biometricEnabled: enableBiometric,
+            geofencingEnabled: enableGeofencing,
+            ssoEnabled: enableSSO
+          },
+          onboardingCompleted: true
+        })
+      });
 
-    // In a real app, we would save all the settings here
+      if (!response.ok) {
+        throw new Error('Failed to save settings');
+      }
 
-    router.push("/")
-  }
+      toast({
+        title: "Setup complete!",
+        description: "Your security settings have been saved.",
+      });
+
+      router.push("/");
+    } catch (error) {
+      toast({
+        title: "Error saving settings",
+        description: error instanceof Error ? error.message : "Failed to save settings",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleBack = () => {
-    router.push("/onboarding/4")
-  }
+    router.push("/onboarding/4");
+  };
 
   return (
-    <OnboardingLayout currentStep={5} totalSteps={5} onNext={handleNext} onBack={handleBack} nextLabel="Complete Setup">
+    <OnboardingLayout 
+      currentStep={5} 
+      totalSteps={5} 
+      onNext={handleNext} 
+      onBack={handleBack} 
+      nextLabel="Complete Setup"
+      nextDisabled={isLoading}
+    >
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Security Setup</h1>
