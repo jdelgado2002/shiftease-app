@@ -29,14 +29,23 @@ export function createCsrfTokenGenerator() {
 }
 
 /**
- * Gets the CSRF token from cookies
+ * Gets the CSRF token from cookies with proper decoding
  */
 export function getCsrfToken(): string | null {
   if (typeof window === 'undefined') return null;
   
-  const cookies = document.cookie.split(';');
-  const csrfCookie = cookies.find(cookie => cookie.trim().startsWith('csrf-token='));
-  return csrfCookie ? decodeURIComponent(csrfCookie.split('=')[1].trim()) : null;
+  try {
+    const cookies = document.cookie.split(';');
+    const csrfCookie = cookies.find(cookie => cookie.trim().startsWith('csrf-token='));
+    if (!csrfCookie) return null;
+    
+    // Extract and decode the token value
+    const token = csrfCookie.split('=')[1].trim();
+    return decodeURIComponent(token);
+  } catch (error) {
+    console.error('Error getting CSRF token:', error);
+    return null;
+  }
 }
 
 /**
@@ -87,17 +96,34 @@ export async function fetchWithCsrf(
   url: RequestInfo | URL,
   options: RequestInit = {}
 ): Promise<Response> {
-  const csrfToken = getCsrfToken();
-  const headers = new Headers(options.headers || {});
-  
-  if (csrfToken) {
-    headers.set('X-CSRF-Token', csrfToken);
-  }
+  try {
+    const csrfToken = getCsrfToken();
+    const headers = new Headers(options.headers || {});
+    
+    // Always set content type for JSON requests
+    if (!headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
+    
+    // Add CSRF token if available
+    if (csrfToken) {
+      headers.set('X-CSRF-Token', csrfToken);
+    }
 
-  // Always include credentials to ensure cookies are sent
-  return fetch(url, {
-    ...options,
-    headers,
-    credentials: 'include',
-  });
+    // Create the enhanced request options
+    const enhancedOptions: RequestInit = {
+      ...options,
+      headers,
+      credentials: 'include', // Always include credentials
+    };
+
+    // Make the request
+    const response = await fetch(url, enhancedOptions);
+    
+    // Return the response without trying to read it
+    return response;
+  } catch (error) {
+    console.error('Fetch error:', error);
+    throw error;
+  }
 }

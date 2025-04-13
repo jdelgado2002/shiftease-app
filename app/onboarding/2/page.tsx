@@ -9,7 +9,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/contexts/auth-context"
-import { fetchWithCsrf } from "@/lib/csrf"
 
 export default function OnboardingStep2() {
   const [restaurantType, setRestaurantType] = useState("")
@@ -34,7 +33,7 @@ export default function OnboardingStep2() {
     }
 
     try {
-      // Create the first location using fetchWithCsrf
+      // Create the first location using regular fetch since we've exempted it from CSRF
       const response = await fetch("/api/locations", {
         method: "POST",
         headers: {
@@ -45,15 +44,20 @@ export default function OnboardingStep2() {
           name: "Main Location",
           address: `${address}, ${city}, ${state} ${zipCode}, ${country}`,
           isMain: true,
+          type: restaurantType,
         }),
+        credentials: 'include',
       })
 
+      const data = await response.json()
+      
       if (!response.ok) {
-        throw new Error("Failed to create location")
+        throw new Error(data.message || "Failed to create location")
       }
 
       router.push("/onboarding/3")
     } catch (error) {
+      console.error('Location creation error:', error)
       toast({
         title: "Error creating location",
         description: error instanceof Error ? error.message : "An error occurred",

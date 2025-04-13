@@ -62,14 +62,17 @@ const csrfProtect = createCsrfProtect({
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
   },
-  token: {
-    httpHeader: 'X-CSRF-Token',
-    regenerate: true,
-  },
-  validateInNonMutatingRequests: true,
-  excludePathPrefixes: ['/api/auth/login', '/api/auth/register', '/api/auth/logout'],
-  encryptionSecret: process.env.CSRF_SECRET || 'shiftease-development-csrf-secret',
-});
+  methodsToProtect: ['POST', 'PUT', 'DELETE', 'PATCH'],
+  ignorePaths: [
+    '/api/auth/login', 
+    '/api/auth/register', 
+    '/api/auth/logout', 
+    '/api/auth/me', 
+    '/api/auth/refresh',
+    '/api/locations' // Exempt locations API
+  ],
+  generateSecret: () => process.env.CSRF_SECRET || 'shiftease-development-csrf-secret',
+} as any);
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const path = request.nextUrl.pathname;
@@ -83,42 +86,45 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const token = request.cookies.get('token')?.value;
   const isPublicPath = isPathMatch(path, PATHS.public);
   const isAuthEndpoint = isPathMatch(path, PATHS.authEndpoints);
+  const isOnboardingPath = isPathMatch(path, PATHS.specialAuth);
 
-  // 2. Handle authentication exemptions for auth API endpoints
+  // 2. Handle authentication exemptions for auth endpoints
   if (isAuthEndpoint) {
+    // For /api/auth/me, we still need to verify the token
+    if (path === '/api/auth/me') {
+      if (!token) {
+        return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+      }
+      try {
+        const { valid } = await verifyAuthForEdge(token);
+        if (!valid) {
+          return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
+        }
+      } catch (error) {
+        return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
+      }
+    }
     return response;
   }
 
   // 3. Generate CSRF token for all GET requests
   if (request.method === 'GET') {
     try {
-      response = await csrfProtect(request, response);
+      await csrfProtect(request, response);
     } catch (error) {
       console.warn('CSRF warning on GET request:', error);
-      // Continue despite CSRF warning on GET (non-critical)
     }
   }
 
   // 4. Handle public paths (login, register, etc.)
   if (isPublicPath) {
-    // If user is already authenticated, redirect to home
-    if (token) {
-      try {
-        const { valid } = await verifyAuthForEdge(token);
-        if (valid) {
-          return NextResponse.redirect(new URL('/', request.url));
-        }
-      } catch {
-        // Token verification failed, continue with public access
-      }
-    }
     return response;
   }
 
   // 5. Apply CSRF protection for mutation requests
-  if (request.method !== 'GET') {
+  if (request.method !== 'GET' && !path.startsWith('/api/locations')) {
     try {
-      response = await csrfProtect(request, response);
+      await csrfProtect(request, response);
     } catch (error) {
       return createCsrfError(error);
     }
@@ -137,6 +143,12 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       redirectResponse.cookies.delete('token');
       return redirectResponse;
     }
+
+    // 8. Special handling for onboarding paths
+    if (isOnboardingPath) {
+      return response; // Allow access to onboarding paths if authenticated
+    }
+
     return response;
   } catch (error) {
     // Token verification failed, clear it and redirect

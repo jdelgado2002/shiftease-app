@@ -117,8 +117,15 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   // Check if user is logged in on initial load
   useEffect(() => {
-    fetchCurrentUser();
-  }, []);
+    // Only fetch user data if we don't already have it
+    if (!user) {
+      fetchCurrentUser().finally(() => {
+        setIsLoading(false);
+      });
+    } else {
+      setIsLoading(false);
+    }
+  }, [user]);
 
   // Handle navigation based on auth actions
   useEffect(() => {
@@ -126,7 +133,10 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     
     switch (navigationAction.type) {
       case 'LOGIN':
-        if (navigationAction.role === 'OWNER' || navigationAction.role === 'MANAGER') {
+        // For owners, check if they need to complete onboarding
+        if (navigationAction.role === 'OWNER' && (!organization?.settings || Object.keys(organization.settings).length === 0)) {
+          router.push("/onboarding/1");
+        } else if (navigationAction.role === 'OWNER' || navigationAction.role === 'MANAGER') {
           router.push("/");
         } else {
           router.push("/schedule");
@@ -150,13 +160,12 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     if (navigationAction.type !== 'NONE') {
       setNavigationAction({ type: 'NONE' });
     }
-  }, [navigationAction, isLoading, router]);
+  }, [navigationAction, isLoading, router, organization]);
 
   const login = async (email: string, password: string, organizationSlug?: string) => {
     setIsLoading(true);
 
     try {
-      // We don't use fetchWithCsrf for login/register since they're exempted in middleware
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -167,7 +176,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
           password,
           organizationSlug,
         }),
-        credentials: 'include', // Important: include credentials (cookies)
+        credentials: 'include',
       });
 
       const data = await response.json();
@@ -182,8 +191,14 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         description: `Welcome back, ${data.user.firstName}!`,
       });
 
-      // Set navigation action instead of using setTimeout
-      setNavigationAction({ type: 'LOGIN', role: data.user.role });
+      // Check if user needs to complete onboarding
+      if (data.user.role === 'OWNER' && (!data.organization.settings || Object.keys(data.organization.settings).length === 0)) {
+        setNavigationAction({ type: 'REGISTER' }); // This will redirect to onboarding
+      } else {
+        setNavigationAction({ type: 'LOGIN', role: data.user.role });
+      }
+      
+      return;
     } catch (error) {
       toast({
         title: "Login failed",
