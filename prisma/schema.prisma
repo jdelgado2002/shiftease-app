@@ -1,6 +1,8 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
-  output   = "../lib/generated/prisma"
 }
 
 datasource db {
@@ -39,6 +41,7 @@ model User {
   sentInvitations Invitation[]   @relation("inviter")
   userLocations   UserLocation[]
   permissions     Permission[]   @relation("PermissionToUser")
+  auditLogs       AuditLog[]     @relation("performer")
 
   @@unique([email, organizationId])
   @@index([organizationId])
@@ -100,6 +103,21 @@ model Invitation {
   @@index([token])
   @@index([organizationId])
   @@map("invitations")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityType String
+  entityId   String
+  userId     String
+  metadata   Json
+  timestamp  DateTime @default(now())
+  user       User     @relation("performer", fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([timestamp])
 }
 
 enum Role {

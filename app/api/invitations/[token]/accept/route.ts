@@ -1,147 +1,100 @@
-import { NextRequest, NextResponse } from "next/server"
-import prisma from "@/lib/prisma"
-import bcrypt from "bcryptjs"
-import { SignJWT } from "jose"
-import { getJwtSecretKey } from "@/lib/auth"
+import { NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+import bcrypt from 'bcryptjs';
+import { SignJWT } from 'jose';
+import { getJwtSecretKey } from '@/lib/auth';
 
 export async function POST(
-  request: NextRequest,
+  request: Request,
   { params }: { params: { token: string } }
 ) {
   try {
-    const token = params.token
-    const { firstName, lastName, password } = await request.json()
+    const invitationToken = params.token;
+    const { firstName, lastName, password } = await request.json();
 
     // Validate required fields
     if (!firstName || !lastName || !password) {
       return NextResponse.json(
-        { message: "Missing required fields" },
+        { error: 'Missing required fields' },
         { status: 400 }
-      )
+      );
     }
 
-    // Find and validate invitation
+    // Find the invitation
     const invitation = await prisma.invitation.findUnique({
-      where: { token },
-      include: { organization: true }
-    })
+      where: { token: invitationToken },
+      include: {
+        organization: true,
+      },
+    });
 
     if (!invitation) {
       return NextResponse.json(
-        { message: "Invalid or expired invitation" },
+        { error: 'Invitation not found' },
         { status: 404 }
-      )
+      );
     }
 
-    if (invitation.status === "ACCEPTED") {
+    // Check if invitation has expired
+    if (invitation.status !== 'PENDING' || invitation.expiresAt < new Date()) {
       return NextResponse.json(
-        { message: "Invitation has already been used" },
+        { error: 'Invitation has expired' },
         { status: 400 }
-      )
-    }
-
-    if (new Date() > new Date(invitation.expiresAt)) {
-      return NextResponse.json(
-        { message: "Invitation has expired" },
-        { status: 400 }
-      )
+      );
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10)
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    let result
-    try {
-      // Use a transaction to create user and update invitation status
-      result = await prisma.$transaction(async (tx) => {
-        // Create user
-        const user = await tx.user.create({
-          data: {
-            email: invitation.email,
-            password: hashedPassword,
-            firstName,
-            lastName,
-            role: invitation.role,
-            organizationId: invitation.organizationId,
-            isOwner: false, // Invited users are not owners
-            status: "ACTIVE",
-          },
-          include: {
-            organization: true,
-          },
-        })
+    // Create user and update invitation in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create the user
+      const user = await tx.user.create({
+        data: {
+          email: invitation.email,
+          firstName,
+          lastName,
+          password: hashedPassword,
+          role: invitation.role,
+          organizationId: invitation.organizationId,
+          status: 'ACTIVE',
+        },
+      });
 
-        // Update invitation status
-        await tx.invitation.update({
-          where: { id: invitation.id },
-          data: { 
-            status: "ACCEPTED",
-            acceptedAt: new Date(),
-            userId: user.id
-          },
-        })
+      // Update invitation status
+      await tx.invitation.update({
+        where: { id: invitation.id },
+        data: {
+          status: 'ACCEPTED',
+          updatedAt: new Date(),
+        },
+      });
 
-        // Create default permissions based on role
-        let permissionNames = []
-
-        if (invitation.role === "MANAGER") {
-          permissionNames = [
-            "manage_schedules",
-            "view_reports",
-            "manage_locations",
-          ]
-        } else if (invitation.role === "EMPLOYEE") {
-          permissionNames = [
-            "view_schedules",
-          ]
-        }
-
-        // Create permissions
-        for (const name of permissionNames) {
-          await tx.permission.create({
-            data: {
-              name,
-              organizationId: invitation.organizationId,
-              users: {
-                connect: { id: user.id }
-              }
-            }
-          })
-        }
-
-        return { user }
-      })
-    } catch (error) {
-      console.error("Transaction error:", error)
-      throw error
-    }
+      return { user };
+    });
 
     // Create JWT token
     const jwtToken = await new SignJWT({
       userId: result.user.id,
-      organizationId: result.user.organizationId,
+      organizationId: invitation.organizationId,
       role: result.user.role,
     })
-      .setProtectedHeader({ alg: "HS256" })
+      .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
-      .setExpirationTime("24h")
-      .sign(new TextEncoder().encode(getJwtSecretKey()))
+      .setExpirationTime('24h')
+      .sign(new TextEncoder().encode(getJwtSecretKey()));
 
-    // Create the response object with user data
+    // Create response
     const response = NextResponse.json({
+      message: 'Registration successful',
       user: {
         id: result.user.id,
         email: result.user.email,
         firstName: result.user.firstName,
         lastName: result.user.lastName,
         role: result.user.role,
-        organizationId: result.user.organizationId,
-        organization: result.user.organization,
-        isOwner: result.user.isOwner,
-        permissions: [], // Empty array initially, will be populated client-side
       },
-      organization: result.user.organization,
-    })
+    });
 
     // Set the token as HttpOnly cookie
     response.cookies.set({
@@ -152,17 +105,14 @@ export async function POST(
       sameSite: 'strict',
       maxAge: 24 * 60 * 60, // 24 hours
       path: '/',
-    })
+    });
 
-    return response
+    return response;
   } catch (error) {
-    console.error("Accept invitation error:", error)
+    console.error('Error accepting invitation:', error);
     return NextResponse.json(
-      { 
-        message: "An error occurred while accepting the invitation", 
-        error: error instanceof Error ? error.message : String(error)
-      },
+      { error: 'Failed to complete registration' },
       { status: 500 }
-    )
+    );
   }
 }

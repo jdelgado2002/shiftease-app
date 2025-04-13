@@ -43,6 +43,29 @@ export interface User {
   profileImage?: string
 }
 
+export type InvitationStatus = 'pending' | 'accepted' | 'expired' | 'revoked'
+
+interface InvitationAudit {
+  action: 'created' | 'sent' | 'resent' | 'accepted' | 'revoked'
+  performedBy: string
+  timestamp: Date
+  details?: Record<string, any>
+}
+
+export interface Invitation {
+  id: string
+  email: string
+  role: Role
+  status: InvitationStatus
+  locationIds?: string[]
+  createdAt: Date
+  expiresAt: Date
+  inviterId: string
+  audit: InvitationAudit[]
+  locationNames?: string[] // Added for UI display purposes
+  inviterName?: string    // Added for UI display purposes
+}
+
 interface AuthContextType {
   user: User | null
   organization: Organization | null
@@ -57,7 +80,24 @@ interface AuthContextType {
     firstName: string
     lastName: string
   }) => Promise<void>
-  inviteUser: (email: string, role: Role) => Promise<void>
+  inviteUser: (data: {
+    email: string
+    role: Role
+    firstName?: string
+    lastName?: string
+    locationIds?: string[]
+  }) => Promise<void>
+  bulkInviteUsers: (invitations: Array<{
+    email: string
+    role?: Role
+    locationIds?: string[]
+  }>) => Promise<{
+    successful: string[]
+    failed: Array<{ email: string; error: string }>
+  }>
+  resendInvitation: (invitationId: string) => Promise<void>
+  revokeInvitation: (invitationId: string) => Promise<void>
+  getInvitations: () => Promise<Invitation[]>
   acceptInvitation: (token: string, userData: {
     firstName: string
     lastName: string
@@ -67,6 +107,19 @@ interface AuthContextType {
   refreshUserData: () => Promise<void>
   hasPermission: (permission: string) => boolean
   hasAccess: (locationId: string) => boolean
+  processCSVInvites: (
+    file: File,
+    defaultRole?: Role,
+    defaultLocationIds?: string[]
+  ) => Promise<{
+    successful: string[]
+    failed: Array<{ email: string; error: string }>
+  }>
+  validateInvitation: (token: string) => Promise<{
+    valid: boolean
+    invitation?: Invitation
+  }>
+  getInvitationAudit: (invitationId: string) => Promise<InvitationAudit[]>
 }
 
 // Navigation action types for different auth flows
@@ -295,20 +348,43 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   };
 
   // Update the rest of the auth methods
-  const inviteUser = async (email: string, role: Role) => {
+  const inviteUser = async ({ 
+    email, 
+    role, 
+    firstName, 
+    lastName, 
+    locationIds 
+  }: {
+    email: string
+    role: Role
+    firstName?: string
+    lastName?: string
+    locationIds?: string[]
+  }) => {
     try {
       if (!user || !organization) throw new Error('Not authenticated');
+      if (!hasPermission('invite_users')) throw new Error('Insufficient permissions');
+
+      // Add audit details to the request
+      const requestBody = {
+        email,
+        role,
+        firstName,
+        lastName,
+        locationIds,
+        audit: {
+          action: 'created',
+          details: { locationIds }
+        }
+      };
 
       const response = await fetch('/api/invitations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-organization-id': organization.id,
         },
-        body: JSON.stringify({
-          email,
-          role,
-          organizationId: organization.id,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -323,6 +399,133 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     } catch (error) {
       toast({
         title: "Failed to send invitation",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
+  // Add bulk invite functionality
+  const bulkInviteUsers = async (invitations: Array<{
+    email: string
+    role?: Role
+    locationIds?: string[]
+  }>) => {
+    try {
+      if (!user || !organization) throw new Error('Not authenticated');
+      if (!hasPermission('invite_users')) throw new Error('Insufficient permissions');
+
+      const response = await fetch('/api/invitations/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-organization-id': organization.id,
+        },
+        body: JSON.stringify({ invitations }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to process bulk invitations');
+
+      toast({
+        title: "Bulk invitations processed",
+        description: `Successfully sent ${data.successful.length} invitations`,
+      });
+
+      return data;
+    } catch (error) {
+      toast({
+        title: "Failed to process bulk invitations",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
+  // Add invitation management methods
+  const resendInvitation = async (invitationId: string) => {
+    try {
+      if (!user || !organization) throw new Error('Not authenticated');
+      if (!hasPermission('invite_users')) throw new Error('Insufficient permissions');
+
+      const response = await fetch(`/api/invitations/${invitationId}/resend`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-organization-id': organization.id,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to resend invitation');
+
+      toast({
+        title: "Invitation resent",
+        description: "The invitation has been resent successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to resend invitation",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
+  const revokeInvitation = async (invitationId: string) => {
+    try {
+      if (!user || !organization) throw new Error('Not authenticated');
+      if (!hasPermission('invite_users')) throw new Error('Insufficient permissions');
+
+      const response = await fetch(`/api/invitations/${invitationId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-organization-id': organization.id,
+        },
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to revoke invitation');
+      }
+
+      toast({
+        title: "Invitation revoked",
+        description: "The invitation has been revoked successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to revoke invitation",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
+  const getInvitations = async () => {
+    try {
+      if (!user || !organization) throw new Error('Not authenticated');
+      if (!hasPermission('view_invitations')) throw new Error('Insufficient permissions');
+
+      const response = await fetch('/api/invitations', {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-organization-id': organization.id,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to fetch invitations');
+
+      return data.invitations;
+    } catch (error) {
+      toast({
+        title: "Failed to fetch invitations",
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
@@ -428,6 +631,91 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     return user.locations.includes(locationId);
   };
 
+  // Add CSV processing function
+  const processCSVInvites = async (
+    file: File,
+    defaultRole: Role = 'EMPLOYEE',
+    defaultLocationIds?: string[]
+  ) => {
+    try {
+      if (!user || !organization) throw new Error('Not authenticated');
+      if (!hasPermission('invite_users')) throw new Error('Insufficient permissions');
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('defaultRole', defaultRole);
+      if (defaultLocationIds) {
+        formData.append('defaultLocationIds', JSON.stringify(defaultLocationIds));
+      }
+
+      const response = await fetch('/api/invitations/csv', {
+        method: 'POST',
+        headers: {
+          'x-organization-id': organization.id,
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to process CSV');
+
+      toast({
+        title: "CSV Processed",
+        description: `Successfully processed ${data.successful.length} invitations`,
+      });
+
+      return data;
+    } catch (error) {
+      toast({
+        title: "Failed to process CSV",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
+  const validateInvitation = async (token: string) => {
+    try {
+      const response = await fetch(`/api/invitations/${token}/validate`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to validate invitation');
+
+      return data;
+    } catch (error) {
+      console.error('Validation error:', error);
+      return { valid: false };
+    }
+  };
+
+  const getInvitationAudit = async (invitationId: string) => {
+    try {
+      if (!user || !organization) throw new Error('Not authenticated');
+      if (!hasPermission('view_invitations')) throw new Error('Insufficient permissions');
+
+      const response = await fetch(`/api/invitations/${invitationId}/audit`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-organization-id': organization.id,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to fetch audit log');
+
+      return data.audit;
+    } catch (error) {
+      console.error('Audit fetch error:', error);
+      throw error;
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -439,11 +727,18 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         logout,
         register,
         inviteUser,
+        bulkInviteUsers,
+        resendInvitation,
+        revokeInvitation,
+        getInvitations,
         acceptInvitation,
         switchOrganization,
         refreshUserData,
         hasPermission,
         hasAccess,
+        processCSVInvites,
+        validateInvitation,
+        getInvitationAudit,
       }}
     >
       {children}
