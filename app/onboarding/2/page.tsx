@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
+import { useAuth } from "@/contexts/auth-context"
 
 export default function OnboardingStep2() {
   const [restaurantType, setRestaurantType] = useState("")
@@ -16,10 +17,12 @@ export default function OnboardingStep2() {
   const [state, setState] = useState("")
   const [zipCode, setZipCode] = useState("")
   const [country, setCountry] = useState("US")
+
   const router = useRouter()
   const { toast } = useToast()
+  const { user } = useAuth()
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!restaurantType || !address || !city || !state || !zipCode) {
       toast({
         title: "Missing information",
@@ -29,7 +32,38 @@ export default function OnboardingStep2() {
       return
     }
 
-    router.push("/onboarding/3")
+    try {
+      // Create the first location using regular fetch since we've exempted it from CSRF
+      const response = await fetch("/api/locations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-organization-id": user?.organizationId ?? "",
+        },
+        body: JSON.stringify({
+          name: "Main Location",
+          address: `${address}, ${city}, ${state} ${zipCode}, ${country}`,
+          isMain: true,
+          type: restaurantType,
+        }),
+        credentials: 'include',
+      })
+
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to create location")
+      }
+
+      router.push("/onboarding/3")
+    } catch (error) {
+      console.error('Location creation error:', error)
+      toast({
+        title: "Error creating location",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleBack = () => {
@@ -103,7 +137,6 @@ export default function OnboardingStep2() {
                   <SelectItem value="MX">Mexico</SelectItem>
                   <SelectItem value="UK">United Kingdom</SelectItem>
                   <SelectItem value="AU">Australia</SelectItem>
-                  {/* Add more countries as needed */}
                 </SelectContent>
               </Select>
             </div>

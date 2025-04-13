@@ -27,6 +27,9 @@ const nextConfig = {
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
   },
+  // Add configuration to handle page reloads and RSC
+  pageExtensions: ['js', 'jsx', 'ts', 'tsx'],
+  poweredByHeader: false,
 }
 
 if (userConfig) {

@@ -32,7 +32,7 @@ export function OnboardingLayout({
       {/* Left sidebar with logo and progress */}
       <div className="bg-primary text-primary-foreground p-6 md:w-80 md:min-h-screen flex flex-col">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold">ShiftEase</h1>
+          <h1 className="text-2xl font-bold">EasyShiftHQ</h1>
           <p className="text-primary-foreground/80 mt-1">Restaurant scheduling simplified</p>
         </div>
 

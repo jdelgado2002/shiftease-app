@@ -29,7 +29,7 @@ export function ProtectedRoute({ children, requiredPermissions = [] }: Protected
         const hasRequiredPermission = requiredPermissions.some((permission) => hasPermission(permission))
 
         if (!hasRequiredPermission) {
-          router.push("/dashboard") // Redirect to dashboard if user doesn't have required permissions
+          router.push("/") // Redirect to root route (dashboard) if user doesn't have required permissions
         }
       }
     }

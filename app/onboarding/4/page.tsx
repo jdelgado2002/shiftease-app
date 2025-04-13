@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Mail, Trash2, Edit2, Send } from "lucide-react"
 import { OnboardingLayout } from "@/components/onboarding/onboarding-layout"
@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
+import { useAuth } from "@/contexts/auth-context"
 
 interface TeamMember {
   id: string
@@ -31,7 +32,13 @@ interface TeamMember {
   inviteStatus: "pending" | "sent" | "accepted"
 }
 
+interface Location {
+  id: string
+  name: string
+}
+
 export default function OnboardingStep4() {
+  const [locations, setLocations] = useState<Location[]>([])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [isAddingMember, setIsAddingMember] = useState(false)
   const [newMember, setNewMember] = useState({
@@ -39,7 +46,7 @@ export default function OnboardingStep4() {
     lastName: "",
     email: "",
     role: "",
-    location: "1", // Default to first location
+    location: "",
   })
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null)
   const [bulkEmails, setBulkEmails] = useState("")
@@ -47,6 +54,35 @@ export default function OnboardingStep4() {
 
   const router = useRouter()
   const { toast } = useToast()
+  const { user } = useAuth()
+
+  useEffect(() => {
+    fetchLocations()
+  }, [])
+
+  const fetchLocations = async () => {
+    try {
+      const response = await fetch("/api/locations", {
+        headers: {
+          "x-organization-id": user?.organizationId ?? "",
+        },
+      })
+      if (!response.ok) throw new Error("Failed to fetch locations")
+      const data = await response.json()
+      setLocations(data)
+
+      // Set default location for new member to the first location if none selected
+      if (!newMember.location && data.length > 0) {
+        setNewMember(prev => ({ ...prev, location: data[0].id }))
+      }
+    } catch (error) {
+      toast({
+        title: "Error fetching locations",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      })
+    }
+  }
 
   const handleNext = () => {
     router.push("/onboarding/5")
@@ -82,7 +118,7 @@ export default function OnboardingStep4() {
       lastName: "",
       email: "",
       role: "",
-      location: "1",
+      location: locations.length > 0 ? locations[0].id : "",
     })
     setIsAddingMember(false)
 
@@ -93,13 +129,7 @@ export default function OnboardingStep4() {
   }
 
   const updateTeamMember = () => {
-    if (
-      !editingMember ||
-      !editingMember.firstName ||
-      !editingMember.lastName ||
-      !editingMember.email ||
-      !editingMember.role
-    ) {
+    if (!editingMember?.firstName || !editingMember?.lastName || !editingMember?.email || !editingMember?.role) {
       return
     }
 
@@ -153,7 +183,7 @@ export default function OnboardingStep4() {
       lastName: "",
       email: email.trim(),
       role: "employee",
-      location: "1",
+      location: locations.length > 0 ? locations[0].id : "",
       inviteStatus: "pending",
     }))
 
@@ -165,6 +195,30 @@ export default function OnboardingStep4() {
       title: "Team members added",
       description: `${newMembers.length} team members have been added.`,
     })
+  }
+
+  // Helper function to get invite status style
+  const getInviteStatusStyle = (status: string) => {
+    switch (status) {
+      case "accepted":
+        return "bg-green-100 text-green-800"
+      case "sent":
+        return "bg-blue-100 text-blue-800"
+      default:
+        return "bg-amber-100 text-amber-800"
+    }
+  }
+
+  // Helper function to get invite status text
+  const getInviteStatusText = (status: string) => {
+    switch (status) {
+      case "accepted":
+        return "Joined"
+      case "sent":
+        return "Invited"
+      default:
+        return "Pending Invite"
+    }
   }
 
   return (
@@ -204,20 +258,8 @@ export default function OnboardingStep4() {
                         </p>
                         <div className="flex gap-2 mt-1">
                           <span className="text-xs bg-muted px-2 py-0.5 rounded-full">{member.role}</span>
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded-full ${
-                              member.inviteStatus === "accepted"
-                                ? "bg-green-100 text-green-800"
-                                : member.inviteStatus === "sent"
-                                  ? "bg-blue-100 text-blue-800"
-                                  : "bg-amber-100 text-amber-800"
-                            }`}
-                          >
-                            {member.inviteStatus === "accepted"
-                              ? "Joined"
-                              : member.inviteStatus === "sent"
-                                ? "Invited"
-                                : "Pending Invite"}
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${getInviteStatusStyle(member.inviteStatus)}`}>
+                            {getInviteStatusText(member.inviteStatus)}
                           </span>
                         </div>
                       </div>
@@ -245,7 +287,7 @@ export default function OnboardingStep4() {
                                   <Label htmlFor="edit-first-name">First Name</Label>
                                   <Input
                                     id="edit-first-name"
-                                    value={editingMember?.firstName || ""}
+                                    value={editingMember?.firstName ?? ""}
                                     onChange={(e) =>
                                       setEditingMember((prev) => (prev ? { ...prev, firstName: e.target.value } : null))
                                     }
@@ -255,7 +297,7 @@ export default function OnboardingStep4() {
                                   <Label htmlFor="edit-last-name">Last Name</Label>
                                   <Input
                                     id="edit-last-name"
-                                    value={editingMember?.lastName || ""}
+                                    value={editingMember?.lastName ?? ""}
                                     onChange={(e) =>
                                       setEditingMember((prev) => (prev ? { ...prev, lastName: e.target.value } : null))
                                     }
@@ -267,7 +309,7 @@ export default function OnboardingStep4() {
                                 <Input
                                   id="edit-email"
                                   type="email"
-                                  value={editingMember?.email || ""}
+                                  value={editingMember?.email ?? ""}
                                   onChange={(e) =>
                                     setEditingMember((prev) => (prev ? { ...prev, email: e.target.value } : null))
                                   }
@@ -276,7 +318,7 @@ export default function OnboardingStep4() {
                               <div className="space-y-2">
                                 <Label htmlFor="edit-role">Role</Label>
                                 <Select
-                                  value={editingMember?.role || ""}
+                                  value={editingMember?.role ?? ""}
                                   onValueChange={(value) =>
                                     setEditingMember((prev) => (prev ? { ...prev, role: value } : null))
                                   }
@@ -299,7 +341,7 @@ export default function OnboardingStep4() {
                               <div className="space-y-2">
                                 <Label htmlFor="edit-location">Location</Label>
                                 <Select
-                                  value={editingMember?.location || "1"}
+                                  value={editingMember?.location ?? locations[0]?.id ?? ""}
                                   onValueChange={(value) =>
                                     setEditingMember((prev) => (prev ? { ...prev, location: value } : null))
                                   }
@@ -308,8 +350,11 @@ export default function OnboardingStep4() {
                                     <SelectValue placeholder="Select location" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="1">Main Location</SelectItem>
-                                    {/* Add more locations dynamically */}
+                                    {locations.map((location) => (
+                                      <SelectItem key={location.id} value={location.id}>
+                                        {location.name}
+                                      </SelectItem>
+                                    ))}
                                   </SelectContent>
                                 </Select>
                               </div>
@@ -404,8 +449,11 @@ export default function OnboardingStep4() {
                           <SelectValue placeholder="Select location" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="1">Main Location</SelectItem>
-                          {/* Add more locations dynamically */}
+                          {locations.map((location) => (
+                            <SelectItem key={location.id} value={location.id}>
+                              {location.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>

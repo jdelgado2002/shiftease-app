@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id             String       @id @default(uuid())
+  name           String
+  slug           String       @unique
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  subscriptionId String?
+  settings       Json?
+  locations      Location[]
+  users          User[]
+  invitations    Invitation[]
+
+  @@index([slug])
+}
+
+model User {
+  id              String         @id @default(uuid())
+  email           String
+  password        String
+  firstName       String
+  lastName        String
+  role            Role           @default(EMPLOYEE)
+  status          UserStatus     @default(INVITED)
+  organizationId  String
+  isOwner         Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+  sentInvitations Invitation[]   @relation("inviter")
+  userLocations   UserLocation[]
+  permissions     Permission[]   @relation("PermissionToUser")
+
+  @@unique([email, organizationId])
+  @@index([organizationId])
+}
+
+model Location {
+  id             String         @id @default(uuid())
+  name           String
+  address        String
+  organizationId String
+  isMain         Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  userLocations  UserLocation[]
+
+  @@index([organizationId])
+}
+
+model Permission {
+  id             String   @id @default(uuid())
+  name           String
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  users          User[]   @relation("PermissionToUser")
+
+  @@unique([name, organizationId])
+}
+
+model UserLocation {
+  id         String   @id @default(cuid())
+  userId     String
+  locationId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now())
+  location   Location @relation(fields: [locationId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, locationId])
+  @@map("user_locations")
+}
+
+model Invitation {
+  id             String       @id @default(uuid())
+  email          String
+  role           Role
+  token          String       @unique
+  organizationId String
+  inviterId      String
+  status         InviteStatus @default(PENDING)
+  expiresAt      DateTime
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now())
+  inviter        User         @relation("inviter", fields: [inviterId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([email, organizationId])
+  @@index([token])
+  @@index([organizationId])
+  @@map("invitations")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  EMPLOYEE
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  INACTIVE
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
