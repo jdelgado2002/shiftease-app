@@ -86,7 +86,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const token = request.cookies.get('token')?.value;
   const isPublicPath = isPathMatch(path, PATHS.public);
   const isAuthEndpoint = isPathMatch(path, PATHS.authEndpoints);
-  const isOnboardingPath = isPathMatch(path, PATHS.specialAuth);
+
 
   // 2. Handle authentication exemptions for auth endpoints
   if (isAuthEndpoint) {
@@ -144,10 +144,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       return redirectResponse;
     }
 
-    // 8. Special handling for onboarding paths
-    if (isOnboardingPath) {
-      return response; // Allow access to onboarding paths if authenticated
-    }
 
     return response;
   } catch (error) {

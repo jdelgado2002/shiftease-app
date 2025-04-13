@@ -155,26 +155,7 @@ export default function OnboardingStep4() {
         variant: 'destructive',
       });
     }
-<<<<<<< Updated upstream
-
-    setTeamMembers([...teamMembers, newTeamMemberObj])
-    setNewMember({
-      firstName: "",
-      lastName: "",
-      email: "",
-      role: "",
-      location: locations.length > 0 ? locations[0].id : "",
-    })
-    setIsAddingMember(false)
-
-    toast({
-      title: "Team member added",
-      description: `${newMember.firstName} ${newMember.lastName} has been added.`,
-    })
-  }
-=======
   };
->>>>>>> Stashed changes
 
   const updateTeamMember = () => {
     if (!editingMember?.firstName || !editingMember?.lastName || !editingMember?.email || !editingMember?.role) {
@@ -257,19 +238,7 @@ export default function OnboardingStep4() {
       .split(/[\s,;]+/)
       .filter((email) => email.trim() !== '');
 
-<<<<<<< Updated upstream
-    const newMembers: TeamMember[] = emails.map((email) => ({
-      id: Date.now() + Math.random().toString(),
-      firstName: "",
-      lastName: "",
-      email: email.trim(),
-      role: "employee",
-      location: locations.length > 0 ? locations[0].id : "",
-      inviteStatus: "pending",
-    }))
-=======
     const defaultLocation = locations.length > 0 ? locations[0].id : '';
->>>>>>> Stashed changes
 
     try {
       const invitationPromises = emails.map((email) => 
