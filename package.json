@@ -37,6 +37,11 @@
     "@radix-ui/react-toggle": "^1.1.1",
     "@radix-ui/react-toggle-group": "^1.1.1",
     "@radix-ui/react-tooltip": "latest",
+<<<<<<< Updated upstream
+=======
+    "@sendgrid/mail": "^8.1.5",
+    "@types/bcrypt": "^5.0.2",
+>>>>>>> Stashed changes
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

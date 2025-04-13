@@ -56,25 +56,70 @@ export default function OnboardingStep4() {
     router.push("/onboarding/3")
   }
 
-  const addTeamMember = () => {
+  const addTeamMember = async () => {
     if (!newMember.firstName || !newMember.lastName || !newMember.email || !newMember.role) {
       toast({
-        title: "Missing information",
-        description: "Please fill in all required fields.",
-        variant: "destructive",
-      })
-      return
+        title: 'Missing information',
+        description: 'Please fill in all required fields.',
+        variant: 'destructive',
+      });
+      return;
     }
 
-    const newTeamMemberObj: TeamMember = {
-      id: Date.now().toString(),
-      firstName: newMember.firstName,
-      lastName: newMember.lastName,
-      email: newMember.email,
-      role: newMember.role,
-      location: newMember.location,
-      inviteStatus: "pending",
+    try {
+      // Send invitation first
+      const response = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-organization-id': user?.organizationId ?? '',
+        },
+        body: JSON.stringify({
+          email: newMember.email,
+          role: newMember.role.toUpperCase(),
+          locationIds: [newMember.location],
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to send invitation');
+      }
+
+      // If invitation was successful, add to local state
+      const newTeamMemberObj: TeamMember = {
+        id: Date.now().toString(),
+        firstName: newMember.firstName,
+        lastName: newMember.lastName,
+        email: newMember.email,
+        role: newMember.role,
+        location: newMember.location,
+        inviteStatus: 'sent',
+      };
+
+      setTeamMembers([...teamMembers, newTeamMemberObj]);
+      setNewMember({
+        firstName: '',
+        lastName: '',
+        email: '',
+        role: '',
+        location: locations.length > 0 ? locations[0].id : '',
+      });
+      setIsAddingMember(false);
+
+      toast({
+        title: 'Team member added',
+        description: `${newMember.firstName} ${newMember.lastName} has been added and invited.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Error adding team member',
+        description: error instanceof Error ? error.message : 'Failed to add team member',
+        variant: 'destructive',
+      });
     }
+<<<<<<< Updated upstream
 
     setTeamMembers([...teamMembers, newTeamMemberObj])
     setNewMember({
@@ -91,6 +136,9 @@ export default function OnboardingStep4() {
       description: `${newMember.firstName} ${newMember.lastName} has been added.`,
     })
   }
+=======
+  };
+>>>>>>> Stashed changes
 
   const updateTeamMember = () => {
     if (
@@ -124,29 +172,62 @@ export default function OnboardingStep4() {
     })
   }
 
-  const sendInvite = (id: string) => {
-    setTeamMembers(teamMembers.map((member) => (member.id === id ? { ...member, inviteStatus: "sent" } : member)))
+  const sendInvite = async (id: string) => {
+    const member = teamMembers.find((m) => m.id === id);
+    if (!member) return;
 
-    const member = teamMembers.find((m) => m.id === id)
+    try {
+      const response = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-organization-id': user?.organizationId ?? '',
+        },
+        body: JSON.stringify({
+          email: member.email,
+          role: member.role.toUpperCase(),
+          locationIds: [member.location],
+        }),
+      });
 
-    toast({
-      title: "Invitation sent",
-      description: `Invitation has been sent to ${member?.email}.`,
-    })
-  }
+      const result = await response.json();
 
-  const processBulkInvites = () => {
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to send invitation');
+      }
+
+      setTeamMembers(teamMembers.map((m) => 
+        m.id === id ? { ...m, inviteStatus: 'sent' } : m
+      ));
+
+      toast({
+        title: 'Invitation sent',
+        description: `Invitation has been sent to ${member.email}`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Error sending invitation',
+        description: error instanceof Error ? error.message : 'Failed to send invitation',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const processBulkInvites = async () => {
     if (!bulkEmails.trim()) {
       toast({
-        title: "No emails provided",
-        description: "Please enter at least one email address.",
-        variant: "destructive",
-      })
-      return
+        title: 'No emails provided',
+        description: 'Please enter at least one email address.',
+        variant: 'destructive',
+      });
+      return;
     }
 
-    const emails = bulkEmails.split(/[\s,;]+/).filter((email) => email.trim() !== "")
+    const emails = bulkEmails
+      .split(/[\s,;]+/)
+      .filter((email) => email.trim() !== '');
 
+<<<<<<< Updated upstream
     const newMembers: TeamMember[] = emails.map((email) => ({
       id: Date.now() + Math.random().toString(),
       firstName: "",
@@ -156,16 +237,59 @@ export default function OnboardingStep4() {
       location: "1",
       inviteStatus: "pending",
     }))
+=======
+    const defaultLocation = locations.length > 0 ? locations[0].id : '';
+>>>>>>> Stashed changes
 
-    setTeamMembers([...teamMembers, ...newMembers])
-    setBulkEmails("")
-    setActiveTab("individual")
+    try {
+      const invitationPromises = emails.map((email) => 
+        fetch('/api/invitations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-organization-id': user?.organizationId ?? '',
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+            role: 'EMPLOYEE',
+            locationIds: defaultLocation ? [defaultLocation] : undefined,
+          }),
+        })
+      );
 
-    toast({
-      title: "Team members added",
-      description: `${newMembers.length} team members have been added.`,
-    })
-  }
+      const responses = await Promise.allSettled(invitationPromises);
+      
+      const successfulInvites = responses.filter(
+        (result): result is PromiseFulfilledResult<Response> => 
+        result.status === 'fulfilled' && result.value.ok
+      );
+
+      const newMembers: TeamMember[] = emails.map((email, index) => ({
+        id: Date.now() + Math.random().toString(),
+        firstName: '',
+        lastName: '',
+        email: email.trim(),
+        role: 'EMPLOYEE',
+        location: defaultLocation,
+        inviteStatus: responses[index].status === 'fulfilled' ? 'sent' : 'pending',
+      }));
+
+      setTeamMembers([...teamMembers, ...newMembers]);
+      setBulkEmails('');
+      setActiveTab('individual');
+
+      toast({
+        title: 'Invitations processed',
+        description: `Successfully sent ${successfulInvites.length} out of ${emails.length} invitations.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Error processing invitations',
+        description: 'Failed to process some invitations. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
 
   return (
     <OnboardingLayout
