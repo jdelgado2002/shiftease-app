@@ -2,28 +2,41 @@
  * CSRF protection utilities for client-side requests
  */
 
+// Import the CSRF package for direct use in server contexts
+import { createCsrfProtect } from '@edge-csrf/nextjs';
+
 /**
- * Gets the CSRF token from the cookie set by the middleware
- * @returns The CSRF token or null if not found
+ * Creates a CSRF token generator for server components
+ * This allows generating fresh CSRF tokens in auth endpoints
+ * @returns A CSRF protection instance that matches the middleware configuration
+ */
+export function createCsrfTokenGenerator() {
+  return createCsrfProtect({
+    cookie: {
+      name: 'csrf-token',
+      httpOnly: true,
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    },
+    methodsToProtect: ['POST', 'PUT', 'DELETE', 'PATCH'],
+    ignorePaths: ['/api/auth/login', '/api/auth/register', '/api/auth/logout', '/api/auth/me', '/api/auth/refresh'],
+    generateSecret: () => {
+      // Use the same secret generation approach as in middleware
+      return process.env.CSRF_SECRET || 'shiftease-development-csrf-secret';
+    }
+  });
+}
+
+/**
+ * Gets the CSRF token from cookies
  */
 export function getCsrfToken(): string | null {
-  // The middleware sets a header with the token value
-  if (typeof document !== 'undefined') {
-    // Get token from cookies
-    const cookies = document.cookie.split(';')
-    const csrfCookie = cookies.find(cookie => cookie.trim().startsWith('csrf-token='))
-    if (csrfCookie) {
-      return csrfCookie.split('=')[1]
-    }
-    
-    // If not found in cookies, check for x-csrf-token header
-    // This is a fallback for when the cookie is HTTP-only
-    const metaTag = document.querySelector('meta[name="csrf-token"]')
-    if (metaTag) {
-      return metaTag.getAttribute('content')
-    }
-  }
-  return null
+  if (typeof window === 'undefined') return null;
+  
+  const cookies = document.cookie.split(';');
+  const csrfCookie = cookies.find(cookie => cookie.trim().startsWith('csrf-token='));
+  return csrfCookie ? decodeURIComponent(csrfCookie.split('=')[1].trim()) : null;
 }
 
 /**
@@ -31,31 +44,60 @@ export function getCsrfToken(): string | null {
  * @param options - The fetch options to enhance with CSRF protection
  * @returns Enhanced fetch options with CSRF token
  */
-export function withCsrf<T extends RequestInit>(options: T): T {
-  const csrfToken = getCsrfToken()
-  if (!csrfToken) return options
+export function withCsrf<T extends RequestInit & { url?: string }>(options: T): T {
+  const csrfToken = getCsrfToken();
+  
+  // If no token found, return original options with credentials
+  if (!csrfToken) {
+    return {
+      ...options,
+      credentials: 'include'
+    };
+  }
 
-  // Create a new headers object with the existing headers and the CSRF token
-  const headers = new Headers(options.headers || {})
-  headers.set('X-CSRF-Token', csrfToken)
+  // Check if this is an auth endpoint
+  const isAuthEndpoint = options.url && (
+    options.url.startsWith('/api/auth/') || 
+    options.url.includes('/api/auth/')
+  );
 
+  // Always include the CSRF token unless it's an auth endpoint
+  if (!isAuthEndpoint) {
+    const headers = new Headers(options.headers || {});
+    headers.set('X-CSRF-Token', csrfToken);
+    
+    return {
+      ...options,
+      headers,
+      credentials: 'include'
+    };
+  }
+
+  // For auth endpoints, just include credentials
   return {
     ...options,
-    headers,
-    // Include credentials to send cookies
     credentials: 'include'
-  }
+  };
 }
 
 /**
  * Enhanced fetch function with CSRF protection
- * @param url - The URL to fetch
- * @param options - The fetch options
- * @returns The fetch response
  */
 export async function fetchWithCsrf(
   url: RequestInfo | URL,
   options: RequestInit = {}
 ): Promise<Response> {
-  return fetch(url, withCsrf(options))
+  const csrfToken = getCsrfToken();
+  const headers = new Headers(options.headers || {});
+  
+  if (csrfToken) {
+    headers.set('X-CSRF-Token', csrfToken);
+  }
+
+  // Always include credentials to ensure cookies are sent
+  return fetch(url, {
+    ...options,
+    headers,
+    credentials: 'include',
+  });
 }

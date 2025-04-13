@@ -93,28 +93,25 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   // Fetch current user from a secure API endpoint instead of using localStorage
   const fetchCurrentUser = async () => {
     try {
-      // Use regular fetch to avoid CSRF issues with auth endpoints
-      const response = await fetch('/api/auth/me', {
+      const response = await fetchWithCsrf('/api/auth/me', {
         method: 'GET',
-        credentials: 'include', // Important: include credentials (cookies)
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setUser(data.user);
-        setOrganization(data.organization);
-      } else {
-        // Clear state if not authenticated
-        setUser(null);
-        setOrganization(null);
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to fetch user data');
       }
+
+      const data = await response.json();
+      setUser(data.user);
+      setOrganization(data.organization);
     } catch (error) {
       console.error('Error fetching current user:', error);
-      // Handle error state
       setUser(null);
       setOrganization(null);
-    } finally {
-      setIsLoading(false);
     }
   };
 

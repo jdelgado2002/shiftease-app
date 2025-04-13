@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs"
 import { SignJWT } from "jose"
 import { getJwtSecretKey } from "@/lib/auth"
 import { getClientIp, rateLimit } from "@/lib/rate-limit"
+import { createCsrfTokenGenerator } from "@/lib/csrf"
 
 export async function POST(request: NextRequest) {
   try {
@@ -192,8 +193,30 @@ export async function POST(request: NextRequest) {
       maxAge: 24 * 60 * 60, // 24 hours
       path: '/',
     })
-
-    return response
+    
+    // Generate and set a CSRF token
+    try {
+      // Generate a CSRF token directly
+      const csrfToken = crypto.randomUUID ? 
+        crypto.randomUUID() : 
+        Buffer.from(Math.random().toString(36) + Date.now().toString()).toString('base64');
+      
+      // Add it to the response cookies
+      response.cookies.set({
+        name: 'csrf-token',
+        value: csrfToken,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+      });
+      
+      return response;
+    } catch (error) {
+      console.warn('CSRF setup error:', error);
+      // Return the original response if CSRF setup fails
+      return response;
+    }
   } catch (error) {
     console.error("Registration error:", error)
     return NextResponse.json(

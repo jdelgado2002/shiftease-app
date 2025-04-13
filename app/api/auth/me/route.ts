@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify the token and get user and organization
-    const { user: tokenData, organization: orgData } = await verifyAuth(token)
+    const { user: tokenData } = await verifyAuth(token)
     
     if (!tokenData || !tokenData.id) {
       return NextResponse.json({ message: "Invalid token" }, { status: 401 })
@@ -43,16 +43,14 @@ export async function GET(request: NextRequest) {
         organizationId: user.organizationId,
         organization: user.organization,
         isOwner: user.isOwner,
-        permissions: user.permissions.map(p => p.name),
-        locations: user.locations,
-        profileImage: user.profileImage,
+        permissions: user.permissions.map(p => p.name)
       },
       organization: user.organization
     })
   } catch (error) {
     console.error("Error fetching current user:", error)
     return NextResponse.json(
-      { message: "Authentication failed" },
+      { message: error instanceof Error ? error.message : "Authentication failed" },
       { status: 401 }
     )
   }
