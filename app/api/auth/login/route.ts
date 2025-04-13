@@ -121,29 +121,7 @@ export async function POST(request: NextRequest) {
       path: '/',
     })
 
-    // Generate and set a CSRF token using the same configuration as middleware
-    try {
-      // Generate a CSRF token directly instead of modifying the response stream
-      const csrfToken = crypto.randomUUID ? 
-        crypto.randomUUID() : 
-        Buffer.from(Math.random().toString(36) + Date.now().toString()).toString('base64');
-      
-      // Add it to the response cookies
-      response.cookies.set({
-        name: 'csrf-token',
-        value: csrfToken,
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax', 
-        path: '/',
-      });
-      
-      return response;
-    } catch (error) {
-      console.warn('CSRF setup error:', error);
-      // Return the original response if CSRF setup completely fails
-      return response;
-    }
+    return response
   } catch (error) {
     console.error("Login error:", error)
     return NextResponse.json(

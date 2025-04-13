@@ -3,7 +3,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
-import { fetchWithCsrf } from "@/lib/csrf"
 
 export type Role = "OWNER" | "MANAGER" | "EMPLOYEE"
 
@@ -93,7 +92,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   // Fetch current user from a secure API endpoint instead of using localStorage
   const fetchCurrentUser = async () => {
     try {
-      const response = await fetchWithCsrf('/api/auth/me', {
+      const response = await fetch('/api/auth/me', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -129,14 +128,19 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   // Handle navigation based on auth actions
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || !user) return;
     
     switch (navigationAction.type) {
       case 'LOGIN':
-        // For owners, check if they need to complete onboarding
-        if (navigationAction.role === 'OWNER' && (!organization?.settings || Object.keys(organization.settings).length === 0)) {
-          router.push("/onboarding/1");
-        } else if (navigationAction.role === 'OWNER' || navigationAction.role === 'MANAGER') {
+        if (user.role === 'OWNER') {
+          // Check if organization settings exist and have any properties
+          const hasSettings = organization?.settings && Object.keys(organization.settings).length > 0;
+          if (!hasSettings) {
+            router.push("/onboarding/1");
+          } else {
+            router.push("/");
+          }
+        } else if (user.role === 'MANAGER') {
           router.push("/");
         } else {
           router.push("/schedule");
@@ -160,7 +164,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     if (navigationAction.type !== 'NONE') {
       setNavigationAction({ type: 'NONE' });
     }
-  }, [navigationAction, isLoading, router, organization]);
+  }, [navigationAction, isLoading, router, organization, user]);
 
   const login = async (email: string, password: string, organizationSlug?: string) => {
     setIsLoading(true);
@@ -191,12 +195,8 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         description: `Welcome back, ${data.user.firstName}!`,
       });
 
-      // Check if user needs to complete onboarding
-      if (data.user.role === 'OWNER' && (!data.organization.settings || Object.keys(data.organization.settings).length === 0)) {
-        setNavigationAction({ type: 'REGISTER' }); // This will redirect to onboarding
-      } else {
-        setNavigationAction({ type: 'LOGIN', role: data.user.role });
-      }
+      // Set navigation action based on role
+      setNavigationAction({ type: 'LOGIN', role: data.user.role });
       
       return;
     } catch (error) {
@@ -256,7 +256,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     setIsLoading(true);
 
     try {
-      // Don't use fetchWithCsrf for register since it's exempted in middleware, similar to login
+      // Don't use fetch for register since it's exempted in middleware, similar to login
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
@@ -299,7 +299,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     try {
       if (!user || !organization) throw new Error('Not authenticated');
 
-      const response = await fetchWithCsrf('/api/invitations', {
+      const response = await fetch('/api/invitations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -336,7 +336,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     password: string
   }) => {
     try {
-      const response = await fetchWithCsrf(`/api/invitations/${token}/accept`, {
+      const response = await fetch(`/api/invitations/${token}/accept`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -373,7 +373,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     setIsLoading(true);
 
     try {
-      const response = await fetchWithCsrf(`/api/organizations/${organizationId}/switch`, {
+      const response = await fetch(`/api/organizations/${organizationId}/switch`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

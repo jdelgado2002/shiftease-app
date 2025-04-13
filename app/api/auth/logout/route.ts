@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest) {
-  // Create a response
-  const response = NextResponse.json({ 
-    success: true, 
-    message: "Logged out successfully" 
-  })
-  
-  // Clear all auth cookies
-  response.cookies.delete('token')
-  
-  // Also clear CSRF cookie to prevent issues with subsequent requests
-  response.cookies.delete('csrf-token')
-  
-  return response
+  try {
+    // Create a response
+    const response = NextResponse.json({ 
+      success: true, 
+      message: "Logged out successfully" 
+    })
+    
+    // Clear the token cookie
+    response.cookies.delete('token')
+    
+    return response
+  } catch (error) {
+    console.error('Logout error:', error)
+    return NextResponse.json(
+      { 
+        success: false,
+        message: "An error occurred during logout",
+        error: error instanceof Error ? error.message : String(error)
+      },
+      { status: 500 }
+    )
+  }
 }
