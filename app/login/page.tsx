@@ -57,8 +57,21 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="w-full max-w-md space-y-8">
-      <div className="text-center">
+    <div className="min-h-screen flex flex-col md:flex-row">
+    <div className="bg-primary text-primary-foreground p-8 md:w-1/2 flex flex-col justify-center items-center">
+    <div className="max-w-md mx-auto text-center">
+      <h1 className="text-3xl font-bold mb-4">EasyShiftHQ</h1>
+      <p className="text-xl mb-6">Restaurant scheduling simplified</p>
+      <p className="text-primary-foreground/80">
+        Join thousands of restaurants that use EasyShiftHQ to streamline scheduling, reduce labor costs, and improve
+        employee satisfaction.
+      </p>
+    </div>
+  </div>
+
+  <div className="p-8 md:w-1/2 flex items-center justify-center">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
         <h1 className="text-2xl font-bold">Welcome back</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Sign in to your account
@@ -115,6 +128,8 @@ export default function LoginPage() {
           Don't have an account? Register
         </Link>
       </div>
+    </div>
+    </div>
     </div>
   )
 }
