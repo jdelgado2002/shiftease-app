@@ -7,9 +7,8 @@ import { Eye, EyeOff, Mail, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/components/ui/use-toast"
-import { useAuth } from "@/contexts/auth-context"
+import { signIn } from "next-auth/react"
 
 export default function RegisterPage() {
   const [firstName, setFirstName] = useState("")
@@ -22,11 +21,11 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false)
   
   const router = useRouter()
-  const { register } = useAuth()
   const { toast } = useToast()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log("Form submitted")
 
     if (password !== confirmPassword) {
       toast({
@@ -38,17 +37,57 @@ export default function RegisterPage() {
     }
 
     setIsLoading(true)
+    console.log("Starting registration process")
 
     try {
-      await register({
-        name: organizationName,
+      console.log("Sending registration request")
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          firstName,
+          lastName,
+          organizationName,
+        }),
+      })
+
+      console.log("Registration response:", response.status)
+      const data = await response.json()
+      console.log("Registration response data:", data)
+
+      if (!response.ok) {
+        throw new Error(data.message || "Registration failed")
+      }
+
+      console.log("Registration successful, attempting to sign in")
+      // After successful registration, sign in the user
+      const result = await signIn("credentials", {
         email,
         password,
-        firstName,
-        lastName,
+        redirect: false,
       })
+
+      console.log("Sign in result:", result)
+
+      if (result?.error) {
+        throw new Error(result.error)
+      }
+
+      toast({
+        title: "Registration successful",
+        description: "Welcome to ShiftEase!",
+      })
+
+      router.push("/")
     } catch (error) {
-      console.error('Registration error:', error)
+      console.error("Registration error:", error)
+      toast({
+        title: "Registration failed",
+        description: error instanceof Error ? error.message : "An error occurred during registration",
+        variant: "destructive",
+      })
     } finally {
       setIsLoading(false)
     }
@@ -168,7 +207,16 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button 
+              type="submit" 
+              className="w-full" 
+              disabled={isLoading}
+              onClick={(e) => {
+                console.log("Button clicked")
+                e.preventDefault()
+                handleSubmit(e)
+              }}
+            >
               {isLoading ? "Creating account..." : "Create Account"}
             </Button>
           </form>

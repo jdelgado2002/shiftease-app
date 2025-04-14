@@ -9,7 +9,7 @@ import { toast } from '@/components/ui/use-toast';
 import { useRouter } from 'next/navigation';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
-import { useAuth } from '@/contexts/auth-context';
+import { signIn } from 'next-auth/react';
 import { Eye, EyeOff } from 'lucide-react';
 
 const registrationSchema = z.object({
@@ -33,8 +33,6 @@ type RegistrationFormValues = z.infer<typeof registrationSchema>;
 interface InvitationRegistrationFormProps {
   invitation: {
     email: string;
-    role: string;
-    locationIds?: string[];
     token: string;
   };
 }
@@ -44,7 +42,6 @@ export function InvitationRegistrationForm({ invitation }: InvitationRegistratio
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
-  const { acceptInvitation } = useAuth();
 
   const form = useForm<RegistrationFormValues>({
     resolver: zodResolver(registrationSchema),
@@ -71,18 +68,28 @@ export function InvitationRegistrationForm({ invitation }: InvitationRegistratio
         }),
       });
 
-      const result = await response.json();
-
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to complete registration');
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to complete registration');
+      }
+
+      // After successful registration, sign in the user
+      const result = await signIn('credentials', {
+        email: invitation.email,
+        password: data.password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        throw new Error(result.error);
       }
 
       toast({
         title: 'Registration successful',
-        description: 'Welcome to ShiftEase! You can now log in.',
+        description: 'Welcome to ShiftEase!',
       });
 
-      router.replace('/login');
+      router.replace('/');
     } catch (error) {
       toast({
         title: 'Error',

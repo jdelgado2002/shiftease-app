@@ -9,15 +9,7 @@ interface AuthContextType {
   user: User | null
   organization: Organization | null
   isLoading: boolean
-  login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
-  register: (data: {
-    email: string
-    password: string
-    firstName: string
-    lastName: string
-    organizationName: string
-  }) => Promise<void>
   inviteUser: (email: string, role: string) => Promise<void>
   hasPermission: (permission: string) => boolean
   hasAccess: (resource: string, action: string) => boolean
@@ -49,35 +41,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false)
   }, [session, status])
 
-  const login = async (email: string, password: string) => {
-    // This is now handled by NextAuth's signIn function in the login page
-  }
-
   const logout = async () => {
     await signOut({ redirect: false })
     router.push("/login")
-  }
-
-  const register = async (data: {
-    email: string
-    password: string
-    firstName: string
-    lastName: string
-    organizationName: string
-  }) => {
-    const response = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    })
-
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || "Registration failed")
-    }
-
-    const result = await response.json()
-    return result
   }
 
   const inviteUser = async (email: string, role: string) => {
@@ -110,9 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     organization,
     isLoading,
-    login,
     logout,
-    register,
     inviteUser,
     hasPermission,
     hasAccess,
