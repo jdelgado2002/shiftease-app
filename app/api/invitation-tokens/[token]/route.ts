@@ -35,7 +35,9 @@ export async function GET(
         email: invitation.email,
         role: invitation.role,
         status: invitation.status,
+        token: invitation.token,
         organization: {
+          id: invitation.organization.id,
           name: invitation.organization.name,
         },
         inviter: {
