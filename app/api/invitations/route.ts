@@ -10,6 +10,10 @@ const invitationSchema = z.object({
   locationIds: z.array(z.string()).optional(),
 });
 
+export async function GET() {
+  return NextResponse.json({ message: 'Method not allowed' }, { status: 405 });
+}
+
 export async function POST(request: Request) {
   try {
     const organizationId = request.headers.get('x-organization-id');

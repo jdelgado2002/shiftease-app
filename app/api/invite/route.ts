@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { createAuditLog } from '@/lib/services/audit-log';
 import { sendInvitationEmail } from '@/lib/services/email';
 import { z } from 'zod';
@@ -12,21 +12,61 @@ const inviteSchema = z.object({
   locationId: z.string().optional(),
 });
 
+export async function GET() {
+  return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const headerOrgId = req.headers.get('x-organization-id');
+    
+    console.log('Session data:', {
+      exists: !!session,
+      user: session?.user,
+      email: session?.user?.email,
+    });
+
+    if (!session?.user?.email) {
+      return NextResponse.json({ 
+        error: 'Unauthorized', 
+        details: 'No valid session found'
+      }, { status: 401 });
+    }
+
+    if (!headerOrgId) {
+      return NextResponse.json({ 
+        error: 'Unauthorized', 
+        details: 'No organization ID provided'
+      }, { status: 401 });
     }
 
     const body = await req.json();
     const { email, role, locationId } = inviteSchema.parse(body);
 
-    // Check if user already exists
+    // Get the user details from the database
+    const user = await prisma.user.findFirst({
+      where: {
+        email: session.user.email,
+        organizationId: headerOrgId,
+      },
+      include: {
+        organization: true,
+      },
+    });
+
+    if (!user || !user.organization) {
+      return NextResponse.json({ 
+        error: 'Unauthorized',
+        details: 'User not found in organization'
+      }, { status: 401 });
+    }
+
+    // Check if target user already exists
     const existingUser = await prisma.user.findFirst({
       where: {
         email,
-        organizationId: session.user.organizationId,
+        organizationId: headerOrgId,
       },
     });
 
@@ -41,7 +81,7 @@ export async function POST(req: Request) {
     const existingInvite = await prisma.invitation.findFirst({
       where: {
         email,
-        organizationId: session.user.organizationId,
+        organizationId: headerOrgId,
         status: 'PENDING',
       },
     });
@@ -58,10 +98,11 @@ export async function POST(req: Request) {
       data: {
         email,
         role,
-        organizationId: session.user.organizationId,
-        inviterId: session.user.id,
+        organizationId: headerOrgId,
+        inviterId: user.id,
         token: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        status: 'PENDING',
       },
     });
 
@@ -69,8 +110,8 @@ export async function POST(req: Request) {
     await sendInvitationEmail({
       email,
       token: invitation.token,
-      organizationName: session.user.organization.name,
-      inviterName: `${session.user.firstName} ${session.user.lastName}`,
+      organizationName: user.organization.name,
+      inviterName: `${user.firstName} ${user.lastName}`,
     });
 
     // Log audit
@@ -78,15 +119,23 @@ export async function POST(req: Request) {
       action: 'INVITE_SENT',
       entityType: 'INVITATION',
       entityId: invitation.id,
-      userId: session.user.id,
+      userId: user.id,
       metadata: { email, role, locationId },
     });
 
-    return NextResponse.json({ invitation });
+    return NextResponse.json({ 
+      success: true,
+      invitation: {
+        id: invitation.id,
+        email: invitation.email,
+        role: invitation.role,
+        status: invitation.status,
+      }
+    });
   } catch (error) {
     console.error('Invitation error:', error);
     return NextResponse.json(
-      { error: 'Failed to send invitation' },
+      { error: 'Failed to send invitation', details: error instanceof Error ? error.message : undefined },
       { status: 500 }
     );
   }

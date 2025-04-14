@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 
 export interface AuditLogEntry {
   action: string;
@@ -8,15 +8,26 @@ export interface AuditLogEntry {
   metadata?: Record<string, any>;
 }
 
-export async function createAuditLog(entry: AuditLogEntry): Promise<void> {
-  await prisma.auditLog.create({
+export async function createAuditLog({
+  action,
+  entityType,
+  entityId,
+  userId,
+  metadata,
+}: {
+  action: string;
+  entityType: string;
+  entityId: string;
+  userId: string;
+  metadata?: Record<string, any>;
+}) {
+  return prisma.auditLog.create({
     data: {
-      action: entry.action,
-      entityType: entry.entityType,
-      entityId: entry.entityId,
-      userId: entry.userId,
-      metadata: entry.metadata || {},
-      timestamp: new Date(),
+      action,
+      entityType,
+      entityId,
+      userId,
+      metadata,
     },
   });
 }

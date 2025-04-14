@@ -37,7 +37,7 @@ export function InviteMemberForm({ onSuccess }: InviteMemberFormProps) {
   async function onSubmit(data: InviteFormValues) {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/invitations', {
+      const response = await fetch('/api/invite', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
+import { useSession } from "next-auth/react"
 
 export type Role = "OWNER" | "MANAGER" | "EMPLOYEE"
 
@@ -141,10 +142,17 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [navigationAction, setNavigationAction] = useState<NavigationAction>({ type: 'NONE' })
   const router = useRouter()
   const { toast } = useToast()
+  const { data: session, status } = useSession()
 
   // Fetch current user from a secure API endpoint instead of using localStorage
   const fetchCurrentUser = async () => {
     try {
+      if (!session?.user?.email) {
+        setUser(null);
+        setOrganization(null);
+        return;
+      }
+
       const response = await fetch('/api/auth/me', {
         method: 'GET',
         headers: {
@@ -169,15 +177,21 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   // Check if user is logged in on initial load
   useEffect(() => {
-    // Only fetch user data if we don't already have it
-    if (!user) {
+    if (status === 'loading') {
+      return;
+    }
+
+    // Only fetch user data if we have a session
+    if (status === 'authenticated' && session?.user) {
       fetchCurrentUser().finally(() => {
         setIsLoading(false);
       });
     } else {
+      setUser(null);
+      setOrganization(null);
       setIsLoading(false);
     }
-  }, [user]);
+  }, [status, session]);
 
   // Handle navigation based on auth actions
   useEffect(() => {

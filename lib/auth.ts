@@ -1,9 +1,28 @@
 import { jwtVerify } from "jose";
 import prisma from "./prisma";
 import crypto from 'crypto';
-import { NextAuthOptions } from 'next-auth';
+import { NextAuthOptions, DefaultSession } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { compare } from 'bcryptjs';
+
+// Extend the built-in session types
+declare module "next-auth" {
+  interface Session extends DefaultSession {
+    user: {
+      id: string;
+      email: string;
+      role: string;
+      organizationId: string;
+    } & DefaultSession["user"]
+  }
+
+  interface User {
+    id: string;
+    email: string;
+    role: string;
+    organizationId: string;
+  }
+}
 
 interface User {
   id: string;
@@ -181,10 +200,8 @@ export const authOptions: NextAuthOptions = {
         return {
           id: user.id,
           email: user.email,
-          name: `${user.firstName} ${user.lastName}`,
           role: user.role,
           organizationId: user.organizationId,
-          organization: user.organization,
         };
       },
     }),
@@ -193,14 +210,16 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        token.email = user.email;
         token.role = user.role;
         token.organizationId = user.organizationId;
       }
       return token;
     },
     async session({ session, token }) {
-      if (token) {
+      if (token && session.user) {
         session.user.id = token.id as string;
+        session.user.email = token.email as string;
         session.user.role = token.role as string;
         session.user.organizationId = token.organizationId as string;
       }
@@ -213,4 +232,5 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: 'jwt',
   },
+  secret: process.env.NEXTAUTH_SECRET,
 };
