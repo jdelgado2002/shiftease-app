@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { createAuditLog } from '@/lib/services/audit-log';
-import { sendInvitationEmail } from '@/lib/services/email';
+import { sendInvitationEmail } from '@/lib/email';
 import { z } from 'zod';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { parse } from 'csv-parse/sync';
+import { cookies } from 'next/headers';
+import { verifyAuth } from '@/lib/auth';
 
 const bulkInviteSchema = z.object({
   csv: z.string(),
@@ -88,12 +90,31 @@ export async function POST(req: Request) {
           },
         });
 
+        // Get the user details from the database
+        const user = await prisma.user.findFirst({
+          where: {
+            email: session.user.email,
+            organizationId: session.user.organizationId,
+          },
+          include: {
+            organization: true,
+          },
+        });
+
+        if (!user || !user.organization) {
+          return NextResponse.json({ 
+            error: 'Unauthorized',
+            details: 'User not found in organization'
+          }, { status: 401 });
+        }
+
         // Send invitation email
         await sendInvitationEmail({
-          email,
-          token: invitation.token,
-          organizationName: session.user.organization.name,
-          inviterName: `${session.user.firstName} ${session.user.lastName}`,
+          inviteeEmail: email,
+          inviterName: `${user.firstName} ${user.lastName}`,
+          organizationName: user.organization.name,
+          role: invitation.role,
+          invitationLink: `${process.env.NEXT_PUBLIC_APP_URL}/accept-invitation?token=${invitation.token}`,
         });
 
         // Log audit

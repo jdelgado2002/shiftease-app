@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createAuditLog } from '@/lib/services/audit-log';
-import { sendInvitationEmail } from '@/lib/services/email';
+import { sendInvitationEmail } from '@/lib/email';
 import { z } from 'zod';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { cookies } from 'next/headers';
+import { verifyAuth } from '@/lib/auth';
 
 const inviteSchema = z.object({
   email: z.string().email(),
@@ -18,14 +20,37 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    const headerOrgId = req.headers.get('x-organization-id');
+    // Try to get the session first
+    let session = await getServerSession(authOptions);
     
-    console.log('Session data:', {
-      exists: !!session,
-      user: session?.user,
-      email: session?.user?.email,
-    });
+    // If no session, try to verify the token from cookies
+    if (!session?.user?.email) {
+      const cookieStore = await cookies();
+      const token = cookieStore.get('token')?.value;
+      if (!token) {
+        return NextResponse.json({ 
+          error: 'Unauthorized', 
+          details: 'No valid session or token found'
+        }, { status: 401 });
+      }
+
+      try {
+        const { user } = await verifyAuth(token);
+        if (!user?.email) {
+          return NextResponse.json({ 
+            error: 'Unauthorized', 
+            details: 'Invalid token'
+          }, { status: 401 });
+        }
+        // Use the verified user data
+        session = { user } as any;
+      } catch (error) {
+        return NextResponse.json({ 
+          error: 'Unauthorized', 
+          details: 'Token verification failed'
+        }, { status: 401 });
+      }
+    }
 
     if (!session?.user?.email) {
       return NextResponse.json({ 
@@ -33,6 +58,14 @@ export async function POST(req: Request) {
         details: 'No valid session found'
       }, { status: 401 });
     }
+
+    const headerOrgId = req.headers.get('x-organization-id');
+    
+    console.log('Session data:', {
+      exists: !!session,
+      user: session?.user,
+      email: session?.user?.email,
+    });
 
     if (!headerOrgId) {
       return NextResponse.json({ 
@@ -108,10 +141,11 @@ export async function POST(req: Request) {
 
     // Send invitation email
     await sendInvitationEmail({
-      email,
-      token: invitation.token,
-      organizationName: user.organization.name,
+      inviteeEmail: email,
       inviterName: `${user.firstName} ${user.lastName}`,
+      organizationName: user.organization.name,
+      role: role,
+      invitationLink: `${process.env.NEXT_PUBLIC_APP_URL}/accept-invitation?token=${invitation.token}`,
     });
 
     // Log audit

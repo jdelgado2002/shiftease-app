@@ -3,6 +3,8 @@ import { z } from 'zod';
 import prisma from '@/lib/prisma';
 import { sendInvitationEmail } from '@/lib/email';
 import { generateToken } from '@/lib/auth';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 const invitationSchema = z.object({
   email: z.string().email(),
@@ -10,15 +12,87 @@ const invitationSchema = z.object({
   locationIds: z.array(z.string()).optional(),
 });
 
-export async function GET() {
-  return NextResponse.json({ message: 'Method not allowed' }, { status: 405 });
+export async function GET(request: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const organizationId = request.headers.get('x-organization-id');
+    if (!organizationId) {
+      return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
+    }
+
+    // Verify the user has permission to view invitations
+    const user = await prisma.user.findFirst({
+      where: {
+        email: session.user.email,
+        organizationId,
+      },
+      include: {
+        permissions: true,
+      },
+    });
+
+    if (!user || !user.permissions.some(p => p.name === 'view_invitations')) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+    }
+
+    const invitations = await prisma.invitation.findMany({
+      where: {
+        organizationId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      include: {
+        inviter: {
+          select: {
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    });
+
+    return NextResponse.json({ invitations });
+  } catch (error) {
+    console.error('Error fetching invitations:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch invitations' },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const organizationId = request.headers.get('x-organization-id');
     if (!organizationId) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
+    }
+
+    // Verify the user has permission to send invitations
+    const user = await prisma.user.findFirst({
+      where: {
+        email: session.user.email,
+        organizationId,
+      },
+      include: {
+        permissions: true,
+      },
+    });
+
+    if (!user || !user.permissions.some(p => p.name === 'invite_users')) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
     const body = await request.json();

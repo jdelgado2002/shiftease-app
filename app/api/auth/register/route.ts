@@ -126,6 +126,10 @@ export async function POST(request: NextRequest) {
           "manage_schedules",
           "manage_settings",
           "view_reports",
+          "invite_users",
+          "view_invitations",
+          "manage_organization",
+          "manage_roles"
         ]
 
         // Create permissions one by one

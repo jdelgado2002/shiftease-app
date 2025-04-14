@@ -201,11 +201,12 @@ export const authOptions: NextAuthOptions = {
           id: user.id,
           email: user.email,
           role: user.role,
-          organizationId: user.organizationId,
+          organizationId: user.organizationId
         };
       },
     }),
   ],
+
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
@@ -224,13 +225,11 @@ export const authOptions: NextAuthOptions = {
         session.user.organizationId = token.organizationId as string;
       }
       return session;
-    },
+    }
   },
   pages: {
     signIn: '/login',
+    error: '/login',
   },
-  session: {
-    strategy: 'jwt',
-  },
-  secret: process.env.NEXTAUTH_SECRET,
-};
+  secret: process.env.NEXTAUTH_SECRET
+}
