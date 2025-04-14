@@ -13,6 +13,9 @@ interface AuthContextType {
   inviteUser: (email: string, role: string) => Promise<void>
   hasPermission: (permission: string) => boolean
   hasAccess: (resource: string, action: string) => boolean
+  getInvitations: () => Promise<any[]>
+  resendInvitation: (invitationId: string) => Promise<void>
+  revokeInvitation: (invitationId: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -62,6 +65,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return result
   }
 
+  const getInvitations = async () => {
+    if (!organization?.id) {
+      throw new Error("No organization ID available")
+    }
+
+    const response = await fetch("/api/invitations", {
+      headers: {
+        "Content-Type": "application/json",
+        "x-organization-id": organization.id,
+      },
+      credentials: "include",
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || "Failed to fetch invitations")
+    }
+
+    const data = await response.json()
+    return data.invitations
+  }
+
+  const resendInvitation = async (invitationId: string) => {
+    if (!organization?.id) {
+      throw new Error("No organization ID available")
+    }
+
+    const response = await fetch(`/api/invitations/${invitationId}/resend`, {
+      method: "POST",
+      headers: {
+        "x-organization-id": organization.id,
+      },
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || "Failed to resend invitation")
+    }
+  }
+
+  const revokeInvitation = async (invitationId: string) => {
+    if (!organization?.id) {
+      throw new Error("No organization ID available")
+    }
+
+    const response = await fetch(`/api/invitations/${invitationId}/revoke`, {
+      method: "POST",
+      headers: {
+        "x-organization-id": organization.id,
+      },
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || "Failed to revoke invitation")
+    }
+  }
+
   const hasPermission = (permission: string) => {
     if (!user?.permissions) return false
     return user.permissions.includes(permission)
@@ -80,6 +141,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     inviteUser,
     hasPermission,
     hasAccess,
+    getInvitations,
+    resendInvitation,
+    revokeInvitation,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

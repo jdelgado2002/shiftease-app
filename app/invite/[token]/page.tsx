@@ -33,7 +33,7 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
   useEffect(() => {
     async function fetchInvitation() {
       try {
-        const response = await fetch(`/api/invitations/${resolvedParams.token}`)
+        const response = await fetch(`/api/invitation-tokens/${resolvedParams.token}`)
         const data = await response.json()
 
         if (!response.ok) {

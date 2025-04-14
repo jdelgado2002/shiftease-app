@@ -2,6 +2,56 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { token: string } }
+) {
+  try {
+    const { token } = params
+
+    // Find the invitation
+    const invitation = await prisma.invitation.findUnique({
+      where: { token },
+      include: {
+        organization: true,
+        inviter: {
+          select: {
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    })
+
+    if (!invitation) {
+      return NextResponse.json(
+        { error: "Invalid or expired invitation" },
+        { status: 400 }
+      )
+    }
+
+    return NextResponse.json({
+      invitation: {
+        email: invitation.email,
+        role: invitation.role,
+        status: invitation.status,
+        organization: {
+          name: invitation.organization.name,
+        },
+        inviter: {
+          name: `${invitation.inviter.firstName} ${invitation.inviter.lastName}`,
+        },
+      },
+    })
+  } catch (error) {
+    console.error("Error validating invitation:", error)
+    return NextResponse.json(
+      { error: "Failed to validate invitation" },
+      { status: 500 }
+    )
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { token: string } }
@@ -20,14 +70,14 @@ export async function POST(
 
     if (!invitation) {
       return NextResponse.json(
-        { message: "Invalid or expired invitation" },
+        { error: "Invalid or expired invitation" },
         { status: 400 }
       )
     }
 
     if (invitation.status !== "PENDING") {
       return NextResponse.json(
-        { message: "Invitation has already been used" },
+        { error: "Invitation has already been used" },
         { status: 400 }
       )
     }
@@ -39,7 +89,7 @@ export async function POST(
 
     if (existingUser) {
       return NextResponse.json(
-        { message: "User with this email already exists" },
+        { error: "User with this email already exists" },
         { status: 400 }
       )
     }
@@ -61,7 +111,6 @@ export async function POST(
       },
       include: {
         organization: true,
-        permissions: true,
       },
     })
 
@@ -72,27 +121,24 @@ export async function POST(
     })
 
     return NextResponse.json({
-      message: "Registration successful",
+      message: "Invitation accepted successfully",
       user: {
         id: user.id,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
-        organizationId: user.organizationId,
-        isOwner: user.isOwner,
         organization: {
           id: user.organization.id,
           name: user.organization.name,
-          slug: user.organization.slug,
         },
       },
     })
   } catch (error) {
     console.error("Error accepting invitation:", error)
     return NextResponse.json(
-      { message: "Failed to complete registration" },
+      { error: "Failed to accept invitation" },
       { status: 500 }
     )
   }
-}
+} 

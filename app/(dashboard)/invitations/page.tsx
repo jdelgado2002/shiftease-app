@@ -17,17 +17,19 @@ export default function InvitationsPage() {
 
   return (
     <DashboardLayout>
-      <ProtectedRoute requiredPermissions={["manage_users"]}>
+      <ProtectedRoute requiredPermissions={["view_invitations"]}>
         <div className="container mx-auto p-4 md:p-6 space-y-6">
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold">Invitations</h1>
               <p className="text-muted-foreground">Manage and track team member invitations</p>
             </div>
-            <Button onClick={() => setIsInviteDialogOpen(true)}>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Invite Member
-            </Button>
+            {hasPermission("invite_users") && (
+              <Button onClick={() => setIsInviteDialogOpen(true)}>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Invite Member
+              </Button>
+            )}
           </div>
 
           <Card className="p-6">

@@ -38,16 +38,43 @@ interface Invitation {
 }
 
 export function InvitationsDataTable() {
-  const [invitations, setInvitations] = useState([]);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { getInvitations, resendInvitation, revokeInvitation } = useAuth();
+  const { getInvitations, resendInvitation, revokeInvitation, organization, user, isLoading: authLoading } = useAuth();
 
   const fetchInvitations = async () => {
     try {
       setIsLoading(true);
-      const data = await getInvitations();
-      setInvitations(data);
+      console.log("Current organization:", organization);
+      console.log("Current user:", user);
+      console.log("Fetching invitations...");
+      
+      const response = await fetch("/api/invitations", {
+        headers: {
+          "Content-Type": "application/json",
+          "x-organization-id": organization?.id ?? "",
+        },
+        credentials: "include",
+      });
+      
+      console.log("Response status:", response.status);
+      console.log("Response headers:", Object.fromEntries(response.headers.entries()));
+      
+      const text = await response.text();
+      console.log("Raw response:", text);
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("Failed to parse JSON:", e);
+        throw new Error("Invalid JSON response from server");
+      }
+      
+      console.log("Parsed data:", data);
+      setInvitations(data.invitations);
     } catch (error) {
+      console.error("Error fetching invitations:", error);
       toast({
         title: "Error fetching invitations",
         description: "Failed to load invitations. Please try again.",
@@ -59,8 +86,14 @@ export function InvitationsDataTable() {
   };
 
   useEffect(() => {
-    fetchInvitations();
-  }, []);
+    if (!authLoading && organization) {
+      fetchInvitations();
+    }
+  }, [authLoading, organization]);
+
+  if (authLoading) {
+    return <div>Loading...</div>;
+  }
 
   const handleResendInvitation = async (invitationId: string) => {
     try {

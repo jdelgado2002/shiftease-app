@@ -56,7 +56,7 @@ export function InvitationRegistrationForm({ invitation }: InvitationRegistratio
   async function onSubmit(data: RegistrationFormValues) {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/invitations/${invitation.token}/accept`, {
+      const response = await fetch(`/api/invitation-tokens/${invitation.token}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

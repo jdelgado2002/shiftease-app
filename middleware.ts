@@ -6,42 +6,38 @@ import { getToken } from 'next-auth/jwt';
  * Checks if a path matches any of the provided patterns
  */
 function isPathMatch(path: string, patterns: string[]): boolean {
-  return patterns.some(pattern => path === pattern || path.startsWith(`${pattern}/`));
+  return patterns.some(pattern => path.startsWith(pattern));
 }
 
 /**
  * Creates a redirect response to the login page with return_to parameter
  */
 function createLoginRedirect(request: NextRequest): NextResponse {
-  // Don't redirect if we're already on the login page
-  if (request.nextUrl.pathname === '/login') {
-    return NextResponse.next();
-  }
-  
-  const loginUrl = new URL('/login', request.url);
-  loginUrl.searchParams.set('return_to', request.nextUrl.pathname);
-  return NextResponse.redirect(loginUrl);
+  const url = new URL('/login', request.url);
+  url.searchParams.set('callbackUrl', request.url);
+  return NextResponse.redirect(url);
 }
 
 // Path configurations
 const PATHS = {
   // Paths that don't require authentication
-  public: ['/login', '/register', '/reset-password', '/invite', '/api/invitations', '/invalid-invitation'],
-  
-  // Special authenticated paths with specific handling
-  specialAuth: ['/onboarding', '/employee-onboarding'],
+  public: ['/login', '/register', '/forgot-password', '/reset-password', '/invite'],
   
   // Paths to bypass middleware completely
-  bypass: [
-    '/_next',
-    '/favicon.ico',
-    '/api/health',
-    '/api/auth',
-  ],
+  bypass: ['/api', '/_next', '/static', '/favicon.ico'],
 };
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const path = request.nextUrl.pathname;
+
+  // Log API requests first
+  if (path.startsWith('/api/')) {
+    console.log('API Request:', {
+      method: request.method,
+      path: path,
+      headers: Object.fromEntries(request.headers.entries()),
+    });
+  }
   
   // 1. Skip middleware for static assets, API routes, and special paths
   if (isPathMatch(path, PATHS.bypass) || request.nextUrl.searchParams.has('_rsc')) {
@@ -51,7 +47,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const token = await getToken({ req: request });
   const isPublicPath = isPathMatch(path, PATHS.public);
 
-  // 2. Handle public paths (login, register, etc.)
+  // 2. Handle public routes
   if (isPublicPath) {
     if (token) {
       // If user is already logged in, redirect to home
@@ -65,11 +61,12 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return createLoginRedirect(request);
   }
 
-  // 4. Token is valid, allow request
   return NextResponse.next();
 }
 
 export const config = {
-  // Apply middleware to all routes except static files
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    '/api/:path*',
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+  ],
 };
