@@ -82,7 +82,7 @@ export function InvitationRegistrationForm({ invitation }: InvitationRegistratio
         description: 'Welcome to ShiftEase! You can now log in.',
       });
 
-      router.push('/login');
+      router.replace('/login');
     } catch (error) {
       toast({
         title: 'Error',

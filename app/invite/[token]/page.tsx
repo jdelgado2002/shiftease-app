@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/contexts/auth-context"
 import { InvitationRegistrationForm } from '@/components/invitation-registration-form'
+import { use } from 'react'
 
 interface InviteDetails {
   email: string
@@ -21,7 +22,8 @@ interface InviteDetails {
   locationIds?: string[]
 }
 
-export default function InvitePage({ params }: { params: { token: string } }) {
+export default function InvitePage({ params }: { params: Promise<{ token: string }> }) {
+  const resolvedParams = use(params)
   const [invitation, setInvitation] = useState<InviteDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -31,7 +33,7 @@ export default function InvitePage({ params }: { params: { token: string } }) {
   useEffect(() => {
     async function fetchInvitation() {
       try {
-        const response = await fetch(`/api/invitations/${params.token}`)
+        const response = await fetch(`/api/invitations/${resolvedParams.token}`)
         const data = await response.json()
 
         if (!response.ok) {
@@ -53,7 +55,7 @@ export default function InvitePage({ params }: { params: { token: string } }) {
     }
 
     fetchInvitation()
-  }, [params.token, router, toast])
+  }, [resolvedParams.token, router, toast])
 
   if (loading) {
     return (

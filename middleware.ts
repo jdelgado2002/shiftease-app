@@ -13,6 +13,11 @@ function isPathMatch(path: string, patterns: string[]): boolean {
  * Creates a redirect response to the login page with return_to parameter
  */
 function createLoginRedirect(request: NextRequest): NextResponse {
+  // Don't redirect if we're already on the login page
+  if (request.nextUrl.pathname === '/login') {
+    return NextResponse.next();
+  }
+  
   const loginUrl = new URL('/login', request.url);
   loginUrl.searchParams.set('return_to', request.nextUrl.pathname);
   return NextResponse.redirect(loginUrl);
@@ -21,7 +26,7 @@ function createLoginRedirect(request: NextRequest): NextResponse {
 // Path configurations
 const PATHS = {
   // Paths that don't require authentication
-  public: ['/login', '/register', '/reset-password', '/invite'],
+  public: ['/login', '/register', '/reset-password', '/invite', '/api/invitations', '/invalid-invitation'],
   
   // Special authenticated paths with specific handling
   specialAuth: ['/onboarding', '/employee-onboarding'],

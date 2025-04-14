@@ -7,6 +7,20 @@ export async function GET(
 ) {
   try {
     const { token } = params;
+    console.log('Looking up invitation with token:', token);
+
+    // First, try to find any invitation with similar token
+    const allInvitations = await prisma.invitation.findMany({
+      where: {
+        token: {
+          contains: token
+        }
+      },
+      select: {
+        token: true
+      }
+    });
+    console.log('Found invitations with similar tokens:', allInvitations);
 
     const invitation = await prisma.invitation.findUnique({
       where: { token },
@@ -14,6 +28,8 @@ export async function GET(
         organization: true,
       },
     });
+
+    console.log('Invitation lookup result:', invitation);
 
     if (!invitation) {
       return NextResponse.json({ error: 'Invitation not found' }, { status: 404 });
@@ -33,7 +49,6 @@ export async function GET(
           id: invitation.organization.id,
         },
         token: invitation.token,
-        locationIds: invitation.locationIds,
       },
     });
   } catch (error) {

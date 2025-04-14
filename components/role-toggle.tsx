@@ -4,6 +4,7 @@ import { useState, createContext, useContext, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { ChefHat, User } from "lucide-react"
+import { useAuth } from "@/contexts/auth-context"
 
 type Role = "manager" | "employee"
 
@@ -30,6 +31,12 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
 export function RoleToggle() {
   const { role, setRole } = useRole()
+  const { user } = useAuth()
+
+  // Only show toggle for managers and owners
+  if (!user || (user.role !== "MANAGER" && user.role !== "OWNER")) {
+    return null
+  }
 
   return (
     <DropdownMenu>
