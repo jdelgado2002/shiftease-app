@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { verifyAuthForEdge } from './lib/auth';
+import { getToken } from 'next-auth/jwt';
 
 /**
  * Checks if a path matches any of the provided patterns
@@ -32,7 +32,12 @@ const PATHS = {
   specialAuth: ['/onboarding', '/employee-onboarding'],
   
   // Paths to bypass middleware completely
-  bypass: ['/_next', '/favicon.ico', '/api/health', '/api/auth/login', '/api/auth/register', '/api/auth/logout', '/api/auth/refresh'],
+  bypass: [
+    '/_next',
+    '/favicon.ico',
+    '/api/health',
+    '/api/auth',
+  ],
 };
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
@@ -43,22 +48,14 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.next();
   }
 
-  const token = request.cookies.get('token')?.value;
+  const token = await getToken({ req: request });
   const isPublicPath = isPathMatch(path, PATHS.public);
 
   // 2. Handle public paths (login, register, etc.)
   if (isPublicPath) {
     if (token) {
       // If user is already logged in, redirect to home
-      try {
-        const { valid } = await verifyAuthForEdge(token);
-        if (valid) {
-          return NextResponse.redirect(new URL('/', request.url));
-        }
-      } catch (error) {
-        // If token verification fails, allow access to public path
-        return NextResponse.next();
-      }
+      return NextResponse.redirect(new URL('/', request.url));
     }
     return NextResponse.next();
   }
@@ -68,22 +65,8 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return createLoginRedirect(request);
   }
 
-  // 4. Verify token validity
-  try {
-    const { valid } = await verifyAuthForEdge(token);
-    if (!valid) {
-      const response = createLoginRedirect(request);
-      response.cookies.delete('token');
-      return response;
-    }
-
-    return NextResponse.next();
-  } catch (error) {
-    // Token verification failed, clear it and redirect
-    const response = createLoginRedirect(request);
-    response.cookies.delete('token');
-    return response;
-  }
+  // 4. Token is valid, allow request
+  return NextResponse.next();
 }
 
 export const config = {
