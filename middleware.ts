@@ -6,7 +6,17 @@ import { getToken } from 'next-auth/jwt';
  * Checks if a path matches any of the provided patterns
  */
 function isPathMatch(path: string, patterns: string[]): boolean {
-  return patterns.some(pattern => path.startsWith(pattern));
+  return patterns.some(pattern => {
+    // Handle exact matches
+    if (pattern === path) return true;
+    // Handle dynamic routes
+    if (pattern.endsWith('*')) {
+      const basePattern = pattern.slice(0, -1);
+      return path.startsWith(basePattern);
+    }
+    // Handle exact matches with trailing slash
+    return path.startsWith(pattern) && (path === pattern || path === `${pattern}/`);
+  });
 }
 
 /**
@@ -21,7 +31,7 @@ function createLoginRedirect(request: NextRequest): NextResponse {
 // Path configurations
 const PATHS = {
   // Paths that don't require authentication
-  public: ['/login', '/register', '/forgot-password', '/reset-password', '/invite'],
+  public: ['/login', '/register', '/forgot-password', '/reset-password', '/invite*'],
   
   // Paths to bypass middleware completely
   bypass: ['/api', '/_next', '/static', '/favicon.ico'],
@@ -49,6 +59,10 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
   // 2. Handle public routes
   if (isPublicPath) {
+    // For invite routes, allow access regardless of authentication status
+    if (path.startsWith('/invite/')) {
+      return NextResponse.next();
+    }
     if (token) {
       // If user is already logged in, redirect to home
       return NextResponse.redirect(new URL('/', request.url));

@@ -66,9 +66,9 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("Checking for existing user")
-    // Check if user with this email already exists
+    // Check if user with this email already exists in the organization
     const existingUser = await prisma.user.findFirst({
-      where: { email },
+      where: { email, organization: { slug: organizationSlug } },
     })
 
     if (existingUser) {

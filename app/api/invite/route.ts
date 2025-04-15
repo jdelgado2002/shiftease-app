@@ -145,7 +145,7 @@ export async function POST(req: Request) {
       inviterName: `${user.firstName} ${user.lastName}`,
       organizationName: user.organization.name,
       role: role,
-      invitationLink: `${process.env.NEXT_PUBLIC_APP_URL}/accept-invitation?token=${invitation.token}`,
+      invitationLink: `${process.env.NEXT_PUBLIC_APP_URL}/invite/${invitation.token}`,
     });
 
     // Log audit
