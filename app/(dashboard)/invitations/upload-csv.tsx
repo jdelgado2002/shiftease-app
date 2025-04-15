@@ -19,7 +19,7 @@ import { downloadCSVTemplate } from './csv-template';
 export function UploadCSV() {
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const { processCSVInvites } = useAuth();
+  const { organization } = useAuth();
   const { toast } = useToast();
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -28,11 +28,31 @@ export function UploadCSV() {
 
     try {
       setIsUploading(true);
-      const result = await processCSVInvites(file);
+      setProgress(10); // Initial progress
+      
+      // Create FormData and append the file
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // Call the API endpoint
+      const response = await fetch('/api/invitations/csv', {
+        method: 'POST',
+        headers: {
+          'x-organization-id': organization?.id || '',
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload CSV');
+      }
+
+      const result = await response.json();
+      setProgress(100);
       
       toast({
         title: "CSV Upload Complete",
-        description: `Successfully processed ${result.successful.length} invitations. ${result.failed.length} failed.`,
+        description: `Successfully processed ${result.successful?.length || 0} invitations. ${result.failed?.length || 0} failed.`,
       });
     } catch (error) {
       toast({
@@ -60,11 +80,14 @@ export function UploadCSV() {
           Download Template
         </Button>
       </div>
-      <DialogContent>
+      <DialogContent aria-describedby="upload-description">
         <DialogHeader>
           <DialogTitle>Upload Invitations CSV</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          <div id="upload-description" className="text-sm text-muted-foreground">
+            Select a CSV file containing invitation details. The file should follow the template format.
+          </div>
           <Input
             type="file"
             accept=".csv"
@@ -72,9 +95,6 @@ export function UploadCSV() {
             disabled={isUploading}
           />
           {isUploading && (
-            <Progress value={progress} className="w-full" />
-          )}
-          {progress > 0 && (
             <div className="space-y-2">
               <Progress value={progress} className="w-full" />
               <p className="text-sm text-muted-foreground text-center">

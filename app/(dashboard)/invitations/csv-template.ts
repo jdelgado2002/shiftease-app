@@ -11,6 +11,12 @@ export function generateCSVTemplate(): string {
 }
 
 export function downloadCSVTemplate() {
+  // Check if running in browser environment
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    console.error('Cannot download CSV template in a non-browser environment');
+    return;
+  }
+
   const csvContent = generateCSVTemplate();
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');

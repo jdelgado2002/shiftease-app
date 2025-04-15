@@ -10,6 +10,7 @@ import { UserPlus } from "lucide-react"
 import { useState } from "react"
 import { InviteMemberForm } from "@/components/invite-member-form"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { UploadCSV } from "./upload-csv"
 
 export default function InvitationsPage() {
   const { hasPermission } = useAuth()
@@ -34,6 +35,7 @@ export default function InvitationsPage() {
 
           <Card className="p-6">
             <InvitationsDataTable />
+            <UploadCSV />
           </Card>
         </div>
 
