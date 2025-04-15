@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { toast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
 
 const inviteFormSchema = z.object({
@@ -25,6 +25,7 @@ interface InviteMemberFormProps {
 export function InviteMemberForm({ onSuccess }: InviteMemberFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
+  const { toast } = useToast();
 
   const form = useForm<InviteFormValues>({
     resolver: zodResolver(inviteFormSchema),
@@ -119,9 +120,9 @@ export function InviteMemberForm({ onSuccess }: InviteMemberFormProps) {
         />
 
         <Button type="submit" disabled={isLoading}>
-          {isLoading ? 'Sending invitation...' : 'Send invitation'}
+          Send Invitation
         </Button>
       </form>
     </Form>
   );
-} 
+}

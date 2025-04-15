@@ -20,7 +20,7 @@ import { MoreHorizontal, RefreshCcw, XCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { formatDistanceToNow } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
-import { toast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 
 interface Invitation {
   id: string;
@@ -38,9 +38,11 @@ interface Invitation {
 }
 
 export function InvitationsDataTable() {
+  // Ensure invitations is always an array
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { getInvitations, resendInvitation, revokeInvitation, organization, user, isLoading: authLoading } = useAuth();
+  const { toast } = useToast();
 
   const fetchInvitations = async () => {
     try {
@@ -57,21 +59,11 @@ export function InvitationsDataTable() {
         credentials: "include",
       });
       
-      console.log("Response status:", response.status);
-      console.log("Response headers:", Object.fromEntries(response.headers.entries()));
-      
-      const text = await response.text();
-      console.log("Raw response:", text);
-      
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        console.error("Failed to parse JSON:", e);
-        throw new Error("Invalid JSON response from server");
+      if (!response.ok) {
+        throw new Error("Failed to fetch invitations");
       }
-      
-      console.log("Parsed data:", data);
+
+      const data = await response.json();
       setInvitations(data.invitations);
     } catch (error) {
       console.error("Error fetching invitations:", error);
@@ -86,10 +78,10 @@ export function InvitationsDataTable() {
   };
 
   useEffect(() => {
-    if (!authLoading && organization) {
-      fetchInvitations();
+    if (!authLoading && organization?.id) {
+      fetchInvitations()
     }
-  }, [authLoading, organization]);
+  }, [organization?.id])
 
   if (authLoading) {
     return <div>Loading...</div>;
@@ -170,7 +162,7 @@ export function InvitationsDataTable() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {invitations.map((invitation: Invitation) => (
+          {(invitations ?? []).map((invitation: Invitation) => (
             <TableRow key={invitation.id}>
               <TableCell>{invitation.email}</TableCell>
               <TableCell className="capitalize">{invitation.role.toLowerCase()}</TableCell>
@@ -212,7 +204,7 @@ export function InvitationsDataTable() {
               </TableCell>
             </TableRow>
           ))}
-          {invitations.length === 0 && !isLoading && (
+          {(invitations?.length === 0 && !isLoading) && (
             <TableRow>
               <TableCell colSpan={6} className="text-center text-muted-foreground">
                 No invitations found
