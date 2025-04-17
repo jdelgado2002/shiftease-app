@@ -11,6 +11,7 @@ const customJestConfig = {
   testEnvironment: 'jest-environment-jsdom',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
+    '^jose$': '<rootDir>/__mocks__/jose.ts',
   },
   testPathIgnorePatterns: [
     '<rootDir>/node_modules/',
@@ -28,11 +29,20 @@ const customJestConfig = {
     '!next.config.js',
     '!**/__tests__/utils/**',
   ],
+  transform: {
+    '^.+\\.(js|jsx|ts|tsx)$': ['babel-jest', { presets: ['next/babel'] }],
+    '^.+\\.mjs$': ['babel-jest', { presets: ['next/babel'] }],
+  },
+  transformIgnorePatterns: [
+    'node_modules/(?!(jose|@panva|@peculiar)/)',
+  ],
   globals: {
     'ts-jest': {
       tsconfig: 'tsconfig.test.json',
     },
   },
+  moduleFileExtensions: ['js', 'jsx', 'ts', 'tsx', 'json', 'mjs'],
+  extensionsToTreatAsEsm: ['.ts', '.tsx'],
 }
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

@@ -1,0 +1,30 @@
+export const authOptions = {
+  adapter: {
+    createUser: jest.fn(),
+    getUser: jest.fn(),
+    getUserByEmail: jest.fn(),
+    getUserByAccount: jest.fn(),
+    updateUser: jest.fn(),
+    deleteUser: jest.fn(),
+    linkAccount: jest.fn(),
+    unlinkAccount: jest.fn(),
+    createSession: jest.fn(),
+    getSessionAndUser: jest.fn(),
+    updateSession: jest.fn(),
+    deleteSession: jest.fn(),
+    createVerificationToken: jest.fn(),
+    useVerificationToken: jest.fn(),
+    deleteVerificationToken: jest.fn(),
+  },
+  providers: [],
+  callbacks: {
+    session: jest.fn(),
+    jwt: jest.fn(),
+  },
+  pages: {
+    signIn: "/login",
+    signOut: "/logout",
+    error: "/error",
+  },
+  secret: "test-secret",
+} 
