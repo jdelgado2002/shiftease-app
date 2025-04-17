@@ -34,7 +34,21 @@ const PATHS = {
   public: ['/login', '/register', '/forgot-password', '/reset-password', '/invite*'],
   
   // Paths to bypass middleware completely
-  bypass: ['/api', '/_next', '/static', '/favicon.ico'],
+  bypass: [
+    '/api/auth',
+    '/_next',
+    '/static',
+    '/favicon.ico',
+    '/api/auth/session',
+    '/api/auth/csrf',
+    '/api/auth/signin',
+    '/api/auth/signout',
+    '/api/auth/callback',
+    '/api/auth/providers',
+    '/api/auth/error',
+    '/api/auth/verify-request',
+    '/api/invitation-tokens',
+  ],
 };
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
@@ -80,7 +94,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
 export const config = {
   matcher: [
-    '/api/:path*',
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api/auth|api/invitation-tokens|_next/static|_next/image|favicon.ico).*)',
   ],
 };
