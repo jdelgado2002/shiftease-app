@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import bcrypt from "bcryptjs"
+import { getRolePermissions } from "@/lib/auth/roles"
 
 export async function GET(
   request: NextRequest,
@@ -99,7 +100,29 @@ export async function POST(
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    // Create user
+    // Get role-based permissions
+    const permissions = getRolePermissions(invitation.role)
+
+    // Create permissions first
+    const userPermissions = await Promise.all(
+      permissions.map(name =>
+        prisma.permission.upsert({
+          where: { 
+            name_organizationId: {
+              name,
+              organizationId: invitation.organizationId
+            }
+          },
+          create: {
+            name,
+            organizationId: invitation.organizationId
+          },
+          update: {} // No updates needed if exists
+        })
+      )
+    )
+
+    // Create user with permissions
     const user = await prisma.user.create({
       data: {
         email: invitation.email,
@@ -108,11 +131,15 @@ export async function POST(
         lastName,
         role: invitation.role,
         organizationId: invitation.organizationId,
-        isOwner: false,
+        isOwner: invitation.role === "OWNER",
         status: "ACTIVE",
+        permissions: {
+          connect: userPermissions.map(p => ({ id: p.id }))
+        }
       },
       include: {
         organization: true,
+        permissions: true
       },
     })
 
@@ -130,6 +157,7 @@ export async function POST(
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        permissions: user.permissions.map(p => p.name),
         organization: {
           id: user.organization.id,
           name: user.organization.name,
@@ -143,4 +171,4 @@ export async function POST(
       { status: 500 }
     )
   }
-} 
+}
