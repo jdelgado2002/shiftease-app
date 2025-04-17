@@ -1,49 +1,69 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter, redirect } from "next/navigation"
-import { Eye, EyeOff, Mail, Lock } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
-import { useAuth } from "@/contexts/auth-context"
-import prisma from '@/lib/prisma'
 import { InvitationRegistrationForm } from '@/components/invitation-registration-form'
+import { use } from 'react'
 
 interface InviteDetails {
   email: string
-  restaurantName: string
   role: string
-  loading: boolean
-  error: string | null
+  organization: {
+    name: string
+    id: string
+  }
+  token: string
+  locationIds?: string[]
 }
 
-async function getInvitation(token: string) {
-  const invitation = await prisma.invitation.findUnique({
-    where: { token },
-    include: {
-      organization: true,
-    },
-  })
+export default function InvitePage({ params }: { params: Promise<{ token: string }> }) {
+  const resolvedParams = use(params)
+  const [invitation, setInvitation] = useState<InviteDetails | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
+  const { toast } = useToast()
 
-  if (!invitation) {
-    return null
+  useEffect(() => {
+    async function fetchInvitation() {
+      try {
+        const response = await fetch(`/api/invitation-tokens/${resolvedParams.token}`)
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to fetch invitation')
+        }
+
+        setInvitation(data.invitation)
+      } catch (error) {
+        setError(error instanceof Error ? error.message : 'Failed to fetch invitation')
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to fetch invitation",
+          variant: "destructive",
+        })
+        router.push('/invalid-invitation')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchInvitation()
+  }, [resolvedParams.token, router, toast])
+
+  if (loading) {
+    return (
+      <div className="container max-w-lg mx-auto py-10">
+        <div className="text-center">
+          <p>Loading invitation details...</p>
+        </div>
+      </div>
+    )
   }
 
-  // Check if invitation has expired
-  if (invitation.status !== 'PENDING' || invitation.expiresAt < new Date()) {
-    return null
-  }
-
-  return invitation
-}
-
-export default async function InvitePage({ params }: { params: { token: string } }) {
-  const invitation = await getInvitation(params.token)
-
-  if (!invitation) {
-    redirect('/invalid-invitation')
+  if (error || !invitation) {
+    return null // Router will handle the redirect
   }
 
   return (

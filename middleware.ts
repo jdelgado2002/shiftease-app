@@ -1,59 +1,85 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { verifyAuthForEdge } from './lib/auth';
+import { getToken } from 'next-auth/jwt';
 
 /**
  * Checks if a path matches any of the provided patterns
  */
 function isPathMatch(path: string, patterns: string[]): boolean {
-  return patterns.some(pattern => path === pattern || path.startsWith(`${pattern}/`));
+  return patterns.some(pattern => {
+    // Handle exact matches
+    if (pattern === path) return true;
+    // Handle dynamic routes
+    if (pattern.endsWith('*')) {
+      const basePattern = pattern.slice(0, -1);
+      return path.startsWith(basePattern);
+    }
+    // Handle exact matches with trailing slash
+    return path.startsWith(pattern) && (path === pattern || path === `${pattern}/`);
+  });
 }
 
 /**
  * Creates a redirect response to the login page with return_to parameter
  */
 function createLoginRedirect(request: NextRequest): NextResponse {
-  const loginUrl = new URL('/login', request.url);
-  loginUrl.searchParams.set('return_to', request.nextUrl.pathname);
-  return NextResponse.redirect(loginUrl);
+  const url = new URL('/login', request.url);
+  url.searchParams.set('callbackUrl', request.url);
+  return NextResponse.redirect(url);
 }
 
 // Path configurations
 const PATHS = {
   // Paths that don't require authentication
-  public: ['/login', '/register', '/reset-password', '/invite'],
-  
-  // Special authenticated paths with specific handling
-  specialAuth: ['/onboarding', '/employee-onboarding'],
+  public: ['/login', '/register', '/forgot-password', '/reset-password', '/invite*'],
   
   // Paths to bypass middleware completely
-  bypass: ['/_next', '/favicon.ico', '/api/health', '/api/auth/login', '/api/auth/register', '/api/auth/logout', '/api/auth/refresh'],
+  bypass: [
+    '/api/auth',
+    '/_next',
+    '/static',
+    '/favicon.ico',
+    '/api/auth/session',
+    '/api/auth/csrf',
+    '/api/auth/signin',
+    '/api/auth/signout',
+    '/api/auth/callback',
+    '/api/auth/providers',
+    '/api/auth/error',
+    '/api/auth/verify-request',
+    '/api/invitation-tokens',
+  ],
 };
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const path = request.nextUrl.pathname;
+
+  // Log API requests first
+  if (path.startsWith('/api/')) {
+    console.log('API Request:', {
+      method: request.method,
+      path: path,
+      headers: Object.fromEntries(request.headers.entries()),
+    });
+  }
   
   // 1. Skip middleware for static assets, API routes, and special paths
   if (isPathMatch(path, PATHS.bypass) || request.nextUrl.searchParams.has('_rsc')) {
     return NextResponse.next();
   }
 
-  const token = request.cookies.get('token')?.value;
+  const token = await getToken({ req: request });
   const isPublicPath = isPathMatch(path, PATHS.public);
 
-  // 2. Handle public paths (login, register, etc.)
+  // 2. Handle public routes
   if (isPublicPath) {
+    // For invite routes, allow access regardless of authentication status
+    if (path.startsWith('/invite/')) {
+      return NextResponse.next();
+    }
     if (token) {
       // If user is already logged in, redirect to home
-      try {
-        const { valid } = await verifyAuthForEdge(token);
-        if (valid) {
-          return NextResponse.redirect(new URL('/', request.url));
-        }
-      } catch (error) {
-        // If token verification fails, allow access to public path
-        return NextResponse.next();
-      }
+      return NextResponse.redirect(new URL('/', request.url));
     }
     return NextResponse.next();
   }
@@ -63,25 +89,11 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return createLoginRedirect(request);
   }
 
-  // 4. Verify token validity
-  try {
-    const { valid } = await verifyAuthForEdge(token);
-    if (!valid) {
-      const response = createLoginRedirect(request);
-      response.cookies.delete('token');
-      return response;
-    }
-
-    return NextResponse.next();
-  } catch (error) {
-    // Token verification failed, clear it and redirect
-    const response = createLoginRedirect(request);
-    response.cookies.delete('token');
-    return response;
-  }
+  return NextResponse.next();
 }
 
 export const config = {
-  // Apply middleware to all routes except static files
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    '/((?!api/auth|api/invitation-tokens|_next/static|_next/image|favicon.ico).*)',
+  ],
 };

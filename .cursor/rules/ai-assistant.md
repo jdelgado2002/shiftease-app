@@ -7,6 +7,7 @@
 - Implement accessibility best practices
 - Use semantic HTML elements and correct ARIA roles/attributes
 - Use "sr-only" Tailwind class for screen reader only text
+- Use pnpm as the package manager
 
 ## Code Project Structure
 - Use <CodeProject> to group related files

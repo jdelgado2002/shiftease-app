@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import bcrypt from "bcryptjs"
-import { SignJWT } from "jose"
-import { getJwtSecretKey } from "@/lib/auth"
 import { getClientIp, rateLimit } from "@/lib/rate-limit"
 
 export async function POST(request: NextRequest) {
   try {
+    console.log("Received registration request")
+    
     // Apply rate limiting for registration to prevent abuse
-    // Use a stricter rate limit for registration than login
     const ip = getClientIp(request);
     const rateLimitResult = rateLimit(ip, {
       maxRequests: 3,           // Only 3 registration attempts
@@ -16,8 +15,8 @@ export async function POST(request: NextRequest) {
       blockDurationMs: 24 * 60 * 60 * 1000 // Block for 24 hours on exceeding limit
     });
 
-    // If rate limit exceeded, return 429 Too Many Requests
     if (!rateLimitResult.success) {
+      console.log("Rate limit exceeded")
       const response = NextResponse.json(
         { 
           message: "Too many registration attempts. Please try again later.",
@@ -26,7 +25,6 @@ export async function POST(request: NextRequest) {
         { status: 429 }
       );
       
-      // Add rate limiting headers
       response.headers.set('Retry-After', String(rateLimitResult.retryAfter ?? 3600));
       response.headers.set('X-RateLimit-Limit', String(rateLimitResult.limit));
       response.headers.set('X-RateLimit-Remaining', '0');
@@ -36,11 +34,11 @@ export async function POST(request: NextRequest) {
     }
 
     const { organizationName, email, password, firstName, lastName } = await request.json()
-
-    console.log('Received registration request for:', { organizationName, email, firstName, lastName })
+    console.log("Registration data received:", { organizationName, email, firstName, lastName })
 
     // Validate required fields
     if (!organizationName || !email || !password || !firstName || !lastName) {
+      console.log("Missing required fields")
       return NextResponse.json(
         { message: "Missing required fields" },
         { status: 400 }
@@ -48,156 +46,121 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate organization slug from name
-    const slug = organizationName
+    const organizationSlug = organizationName
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-+|-+$)/g, "")
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
 
-    console.log('Generated slug:', slug)
-
-    // Check if organization with slug already exists
-    const existingOrg = await prisma.organization.findUnique({
-      where: { slug }
+    console.log("Checking for existing organization")
+    // Check if organization with this slug already exists
+    const existingOrganization = await prisma.organization.findUnique({
+      where: { slug: organizationSlug },
     })
 
-    if (existingOrg) {
+    if (existingOrganization) {
+      console.log("Organization already exists")
       return NextResponse.json(
-        { message: "Organization already exists" },
-        { status: 409 }
+        { message: "Organization with this name already exists" },
+        { status: 400 }
       )
     }
 
-    // Check if user with email exists in any organization they own
-    const existingOwner = await prisma.user.findFirst({
-      where: { 
-        email,
-        isOwner: true,
-        role: "OWNER"
-      }
+    console.log("Checking for existing user")
+    // Check if user with this email already exists in the organization
+    const existingUser = await prisma.user.findFirst({
+      where: { email, organization: { slug: organizationSlug } },
     })
 
-    if (existingOwner) {
+    if (existingUser) {
+      console.log("User already exists")
       return NextResponse.json(
-        { message: "An organization owner account with this email already exists" },
-        { status: 409 }
+        { message: "User with this email already exists" },
+        { status: 400 }
       )
     }
 
+    console.log("Creating organization")
+    // Create organization
+    const organization = await prisma.organization.create({
+      data: {
+        name: organizationName,
+        slug: organizationSlug,
+      },
+    })
+
+    console.log("Hashing password")
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    let result;
-    try {
-      // Create organization and owner in a transaction
-      result = await prisma.$transaction(async (tx) => {
-        console.log('Creating organization...')
-        // Create organization first
-        const organization = await tx.organization.create({
-          data: {
-            name: organizationName,
-            slug,
-            settings: {},
-          },
-        })
-
-        console.log('Creating user...')
-        // Create the owner user
-        const user = await tx.user.create({
-          data: {
-            email,
-            password: hashedPassword,
-            firstName,
-            lastName,
-            role: "OWNER",
-            status: "ACTIVE",
-            organizationId: organization.id,
-            isOwner: true,
-          },
-          include: {
-            organization: true,
-          },
-        })
-
-        console.log('Creating permissions...')
-        // Create default permissions for the owner
-        const permissionNames = [
-          "manage_users",
-          "manage_locations",
-          "manage_schedules",
-          "manage_settings",
-          "view_reports",
-        ]
-
-        // Create permissions one by one
-        for (const name of permissionNames) {
-          await tx.permission.create({
-            data: {
-              name,
-              organizationId: organization.id,
-              users: {
-                connect: { id: user.id }
-              }
-            }
-          })
-        }
-
-        return { organization, user }
-      })
-    } catch (txError) {
-      console.error('Transaction error:', txError)
-      throw txError
-    }
-
-    console.log('Creating JWT token...')
-    // Create JWT token
-    const token = await new SignJWT({
-      userId: result.user.id,
-      organizationId: result.organization.id,
-      role: result.user.role,
-    })
-      .setProtectedHeader({ alg: "HS256" })
-      .setIssuedAt()
-      .setExpirationTime("24h")
-      .sign(new TextEncoder().encode(getJwtSecretKey()))
-
-    // Create response object with user data but WITHOUT the token in the body
-    const response = NextResponse.json({
-      user: {
-        id: result.user.id,
-        email: result.user.email,
-        firstName: result.user.firstName,
-        lastName: result.user.lastName,
-        role: result.user.role,
-        organizationId: result.organization.id,
-        organization: result.organization,
-        isOwner: result.user.isOwner,
-        permissions: [
-          "manage_users",
-          "manage_locations",
-          "manage_schedules",
-          "manage_settings",
-          "view_reports",
-        ],
+    console.log("Creating user")
+    // Create user
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        firstName,
+        lastName,
+        role: "OWNER",
+        organizationId: organization.id,
+        isOwner: true,
+        status: "ACTIVE",
       },
-      organization: result.organization,
+      include: {
+        organization: true,
+        permissions: true,
+      },
     })
 
-    // Set the token as HttpOnly cookie
-    response.cookies.set({
-      name: 'token',
-      value: token,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 24 * 60 * 60, // 24 hours
-      path: '/',
+    console.log("Creating default permissions")
+    // Create default permissions for the owner
+    const permissions = await prisma.permission.createMany({
+      data: [
+        { name: "manage_organization", organizationId: organization.id },
+        { name: "manage_users", organizationId: organization.id },
+        { name: "manage_locations", organizationId: organization.id },
+        { name: "manage_schedule", organizationId: organization.id },
+        { name: "view_reports", organizationId: organization.id },
+      ],
     })
-    
-    return response
+
+    // Connect permissions to the user
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        permissions: {
+          connect: [
+            { name_organizationId: { name: "manage_organization", organizationId: organization.id } },
+            { name_organizationId: { name: "manage_users", organizationId: organization.id } },
+            { name_organizationId: { name: "manage_locations", organizationId: organization.id } },
+            { name_organizationId: { name: "manage_schedule", organizationId: organization.id } },
+            { name_organizationId: { name: "view_reports", organizationId: organization.id } },
+          ]
+        }
+      }
+    })
+
+    console.log("Registration successful")
+    return NextResponse.json({
+      message: "Registration successful",
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        organizationId: user.organizationId,
+        isOwner: user.isOwner,
+        organization: {
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+        },
+      },
+    })
   } catch (error) {
     console.error("Registration error:", error)
     return NextResponse.json(
-      { message: "An error occurred during registration", error: error instanceof Error ? error.message : String(error) },
+      { message: "Registration failed" },
       { status: 500 }
     )
   }

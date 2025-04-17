@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { toast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/auth-context';
 
 const inviteFormSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -17,8 +18,14 @@ const inviteFormSchema = z.object({
 
 type InviteFormValues = z.infer<typeof inviteFormSchema>;
 
-export function InviteMemberForm() {
+interface InviteMemberFormProps {
+  onSuccess?: () => void;
+}
+
+export function InviteMemberForm({ onSuccess }: InviteMemberFormProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const { user } = useAuth();
+  const { toast } = useToast();
 
   const form = useForm<InviteFormValues>({
     resolver: zodResolver(inviteFormSchema),
@@ -31,10 +38,11 @@ export function InviteMemberForm() {
   async function onSubmit(data: InviteFormValues) {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/invitations', {
+      const response = await fetch('/api/invite', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-organization-id': user?.organizationId ?? '',
         },
         body: JSON.stringify(data),
       });
@@ -51,6 +59,7 @@ export function InviteMemberForm() {
       });
 
       form.reset();
+      onSuccess?.();
     } catch (error) {
       toast({
         title: 'Error',
@@ -111,9 +120,9 @@ export function InviteMemberForm() {
         />
 
         <Button type="submit" disabled={isLoading}>
-          {isLoading ? 'Sending invitation...' : 'Send invitation'}
+          Send Invitation
         </Button>
       </form>
     </Form>
   );
-} 
+}

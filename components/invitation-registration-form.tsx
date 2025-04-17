@@ -7,10 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { toast } from '@/components/ui/use-toast';
 import { useRouter } from 'next/navigation';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/components/ui/use-toast';
+import { signIn } from 'next-auth/react';
+import { Eye, EyeOff } from 'lucide-react';
 
 const registrationSchema = z.object({
-  firstName: z.string().min(2, 'First name must be at least 2 characters'),
-  lastName: z.string().min(2, 'Last name must be at least 2 characters'),
+  firstName: z.string().min(1, 'First name is required'),
+  lastName: z.string().min(1, 'Last name is required'),
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
@@ -20,7 +24,7 @@ const registrationSchema = z.object({
     ),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
+  message: 'Passwords do not match',
   path: ['confirmPassword'],
 });
 
@@ -28,18 +32,16 @@ type RegistrationFormValues = z.infer<typeof registrationSchema>;
 
 interface InvitationRegistrationFormProps {
   invitation: {
-    token: string;
     email: string;
-    role: string;
-    organization: {
-      name: string;
-    };
+    token: string;
   };
 }
 
 export function InvitationRegistrationForm({ invitation }: InvitationRegistrationFormProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
+  const { toast } = useToast();
 
   const form = useForm<RegistrationFormValues>({
     resolver: zodResolver(registrationSchema),
@@ -54,30 +56,40 @@ export function InvitationRegistrationForm({ invitation }: InvitationRegistratio
   async function onSubmit(data: RegistrationFormValues) {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/auth/register', {
+      const response = await fetch(`/api/invitation-tokens/${invitation.token}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ...data,
-          email: invitation.email,
-          invitationToken: invitation.token,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          password: data.password,
         }),
       });
 
-      const result = await response.json();
-
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to complete registration');
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to complete registration');
+      }
+
+      // After successful registration, sign in the user
+      const result = await signIn('credentials', {
+        email: invitation.email,
+        password: data.password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        throw new Error(result.error);
       }
 
       toast({
         title: 'Registration successful',
-        description: 'Welcome to ShiftEase! You can now log in.',
+        description: 'Welcome to ShiftEase!',
       });
 
-      router.push('/login');
+      router.replace('/');
     } catch (error) {
       toast({
         title: 'Error',
@@ -91,75 +103,80 @@ export function InvitationRegistrationForm({ invitation }: InvitationRegistratio
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <FormField
-          control={form.control}
-          name="firstName"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>First name</FormLabel>
-              <FormControl>
-                <Input placeholder="Enter your first name" disabled={isLoading} {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="firstName">First Name</Label>
+          <Input
+            id="firstName"
+            {...form.register('firstName')}
+            disabled={isLoading}
+          />
+          {form.formState.errors.firstName && (
+            <p className="text-sm text-red-500">
+              {form.formState.errors.firstName.message}
+            </p>
           )}
-        />
+        </div>
 
-        <FormField
-          control={form.control}
-          name="lastName"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Last name</FormLabel>
-              <FormControl>
-                <Input placeholder="Enter your last name" disabled={isLoading} {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
+        <div className="space-y-2">
+          <Label htmlFor="lastName">Last Name</Label>
+          <Input
+            id="lastName"
+            {...form.register('lastName')}
+            disabled={isLoading}
+          />
+          {form.formState.errors.lastName && (
+            <p className="text-sm text-red-500">
+              {form.formState.errors.lastName.message}
+            </p>
           )}
-        />
+        </div>
 
-        <FormField
-          control={form.control}
-          name="password"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Password</FormLabel>
-              <FormControl>
-                <Input
-                  type="password"
-                  placeholder="Create a password"
-                  disabled={isLoading}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
+        <div className="space-y-2">
+          <Label htmlFor="password">Password</Label>
+          <div className="relative">
+            <Input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              {...form.register('password')}
+              disabled={isLoading}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-2 top-1/2 -translate-y-1/2"
+            >
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+          {form.formState.errors.password && (
+            <p className="text-sm text-red-500">
+              {form.formState.errors.password.message}
+            </p>
           )}
-        />
+        </div>
 
-        <FormField
-          control={form.control}
-          name="confirmPassword"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Confirm password</FormLabel>
-              <FormControl>
-                <Input
-                  type="password"
-                  placeholder="Confirm your password"
-                  disabled={isLoading}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
+        <div className="space-y-2">
+          <Label htmlFor="confirmPassword">Confirm Password</Label>
+          <Input
+            id="confirmPassword"
+            type="password"
+            {...form.register('confirmPassword')}
+            disabled={isLoading}
+          />
+          {form.formState.errors.confirmPassword && (
+            <p className="text-sm text-red-500">
+              {form.formState.errors.confirmPassword.message}
+            </p>
           )}
-        />
+        </div>
 
-        <Button type="submit" className="w-full" disabled={isLoading}>
-          {isLoading ? 'Creating your account...' : 'Complete registration'}
+        <Button type="submit" disabled={isLoading} className="w-full">
+          {isLoading ? 'Creating account...' : 'Create Account'}
         </Button>
       </form>
     </Form>

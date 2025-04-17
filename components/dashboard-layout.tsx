@@ -216,6 +216,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       roles: ["owner", "manager", "employee"],
     },
     {
+      title: "Invitations",
+      href: "/invitations",
+      icon: Users2,
+      roles: ["owner", "manager"],
+      permissions: ["manage_users"],
+    },
+    {
       title: "Users & Permissions",
       href: "/settings/users",
       icon: Shield,

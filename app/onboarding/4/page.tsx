@@ -22,6 +22,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/contexts/auth-context"
 
+interface Location {
+  id: string
+  name: string
+  address: string
+  isMain: boolean
+}
+
 interface TeamMember {
   id: string
   firstName: string
@@ -30,11 +37,6 @@ interface TeamMember {
   role: string
   location: string
   inviteStatus: "pending" | "sent" | "accepted"
-}
-
-interface Location {
-  id: string
-  name: string
 }
 
 export default function OnboardingStep4() {
@@ -54,35 +56,65 @@ export default function OnboardingStep4() {
 
   const router = useRouter()
   const { toast } = useToast()
-  const { user } = useAuth()
+  const { user, refreshUserData } = useAuth()
+
+  useEffect(() => {
+    if (!user) {
+      refreshUserData()
+    }
+  }, [user, refreshUserData])
 
   useEffect(() => {
     fetchLocations()
-  }, [])
+  }, [user?.organizationId])
 
   const fetchLocations = async () => {
     try {
+      if (!user?.organizationId) {
+        console.error('No organization ID available:', user);
+        return;
+      }
+
+      console.log('Fetching locations with organization ID:', user.organizationId);
       const response = await fetch("/api/locations", {
         headers: {
-          "x-organization-id": user?.organizationId ?? "",
+          "x-organization-id": user.organizationId,
         },
-      })
-      if (!response.ok) throw new Error("Failed to fetch locations")
-      const data = await response.json()
-      setLocations(data)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Location fetch response not ok:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        });
+        throw new Error(errorData.message || "Failed to fetch locations");
+      }
+
+      const data = await response.json();
+      console.log('Fetched locations:', data);
+
+      if (!Array.isArray(data)) {
+        console.error('Unexpected locations data format:', data);
+        throw new Error("Invalid locations data format");
+      }
+
+      setLocations(data);
 
       // Set default location for new member to the first location if none selected
       if (!newMember.location && data.length > 0) {
-        setNewMember(prev => ({ ...prev, location: data[0].id }))
+        setNewMember(prev => ({ ...prev, location: data[0].id }));
       }
     } catch (error) {
+      console.error('Error fetching locations:', error);
       toast({
         title: "Error fetching locations",
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const handleNext = () => {
     router.push("/onboarding/5")
@@ -297,8 +329,10 @@ export default function OnboardingStep4() {
         return "bg-green-100 text-green-800"
       case "sent":
         return "bg-blue-100 text-blue-800"
+      case "pending":
+        return "bg-yellow-100 text-yellow-800"
       default:
-        return "bg-amber-100 text-amber-800"
+        return "bg-gray-100 text-gray-800"
     }
   }
 
@@ -306,11 +340,13 @@ export default function OnboardingStep4() {
   const getInviteStatusText = (status: string) => {
     switch (status) {
       case "accepted":
-        return "Joined"
+        return "Accepted"
       case "sent":
         return "Invited"
+      case "pending":
+        return "Pending"
       default:
-        return "Pending Invite"
+        return status
     }
   }
 
@@ -420,14 +456,8 @@ export default function OnboardingStep4() {
                                     <SelectValue placeholder="Select role" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="manager">Manager</SelectItem>
-                                    <SelectItem value="assistant-manager">Assistant Manager</SelectItem>
-                                    <SelectItem value="shift-lead">Shift Lead</SelectItem>
-                                    <SelectItem value="server">Server</SelectItem>
-                                    <SelectItem value="bartender">Bartender</SelectItem>
-                                    <SelectItem value="host">Host</SelectItem>
-                                    <SelectItem value="cook">Cook</SelectItem>
-                                    <SelectItem value="dishwasher">Dishwasher</SelectItem>
+                                    <SelectItem value="MANAGER">Manager</SelectItem>
+                                    <SelectItem value="EMPLOYEE">Employee</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
@@ -521,14 +551,8 @@ export default function OnboardingStep4() {
                           <SelectValue placeholder="Select role" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="manager">Manager</SelectItem>
-                          <SelectItem value="assistant-manager">Assistant Manager</SelectItem>
-                          <SelectItem value="shift-lead">Shift Lead</SelectItem>
-                          <SelectItem value="server">Server</SelectItem>
-                          <SelectItem value="bartender">Bartender</SelectItem>
-                          <SelectItem value="host">Host</SelectItem>
-                          <SelectItem value="cook">Cook</SelectItem>
-                          <SelectItem value="dishwasher">Dishwasher</SelectItem>
+                          <SelectItem value="MANAGER">Manager</SelectItem>
+                          <SelectItem value="EMPLOYEE">Employee</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
